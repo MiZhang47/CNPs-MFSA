@@ -1,4 +1,4 @@
-# CNPs-MFSA
+# 🌟 CNPs-MFSA
 Target Complex natural products (CNPs) Structure Annotation Tool was constructed using a modular fragmentation-based structural assembly (MFSA) strategy. 
 
 ### 🌱 The MFSA strategy involves:<br> 
