@@ -8,7 +8,7 @@ Target Complex natural products (CNPs) Structure Annotation Tool was constructed
 (d) annotating module structures of CNP by labeling characteristic product ions and neutral losses;<br> 
 (e) reassemble the annotated modules to generate complete structural annotations.
 
-### CNPs-MFSA provides functionalities as below:
+### CNPs-MFSA provides the following functions:
 **recognize target natural products**, **calculate element composition**, **determine possible adduct ions**, **identify characteristic neutral losses**, **label characteristic product ions**, **calculate similarity scores** between standard and query spectra, and provide possible structure annotation. 
 
-For detailed instructions, please refer to the user manual.
+For detailed instructions, please refer to the <ins>user manual</ins>.
