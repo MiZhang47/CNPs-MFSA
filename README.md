@@ -8,6 +8,6 @@ The MFSA strategy involves:<br>
 (d) annotating module structures of CNP by labeling characteristic product ions and neutral losses;<br> 
 (e) reassemble the annotated modules to generate complete structural annotations.
 
-CNPs-MFSA provides functionalities to recognize target natural products, calculate element composition, determine possible adduct ions, identify characteristic neutral losses, extract feature ions, calculate cosine similarity scores between standard and query spectra, and provide possible structure annotation. 
+CNPs-MFSA provides functionalities to **recognize target natural products**, **calculate element composition**, **determine possible adduct ions**, **identify characteristic neutral losses**, **label characteristic product ions**, **calculate similarity scores** between standard and query spectra, and provide possible structure annotation. 
 
 For detailed instructions, please refer to the user manual.
