@@ -4754,5 +4754,5 @@ def save_tab8_file(name, content, tab_folder='tab_8_uploads'):
 # =========================
 #  Main Entrance
 # =========================
-if __name__ == '__main__':
-    app.run_server(debug=True)
+# if __name__ == '__main__':
+    # app.run_server(debug=True)
