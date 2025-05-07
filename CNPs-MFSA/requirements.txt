@@ -1,0 +1,10 @@
+dash
+plotly
+dash-bootstrap-components
+pandas
+numpy
+chardet
+rdkit
+pyteomics
+matchms
+flask
