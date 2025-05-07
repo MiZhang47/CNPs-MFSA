@@ -844,6 +844,22 @@ app.layout = html.Div([  # Main container for the application
         # Tab 8: Visualization
         dcc.Tab(label='8. Visualization', children=[
             html.Div([
+                html.H5("Replace default.csv:"),
+                dcc.Upload(
+                    id="upload-default-csv",
+                    children=html.Div(["Drag and Drop or Select a CSV File"]),
+                    style={
+                        'width': '100%', 'height': '60px', 'lineHeight': '60px',
+                        'borderWidth': '1px', 'borderStyle': 'dashed',
+                        'borderRadius': '5px', 'textAlign': 'center', 'margin': '10px'
+                    },
+                    multiple=False
+                ),
+                html.Div(id='upload-confirmation', style={'marginBottom': '20px', 'color': 'green'}),
+                html.Div(id='summary-bar-count'),
+                html.Div(id='summary-bar-area')
+            ]),
+            html.Div([
                 html.Div([
                     html.H4('Import Query CSV file (multiple files):', style={'fontFamily': 'Arial'}),
                     dcc.Upload(
@@ -927,6 +943,7 @@ app.layout = html.Div([  # Main container for the application
             'fontWeight': 'bold'
         })
     ], style={'fontFamily': 'Arial'})
+    dcc.Interval(id='auto-trigger', interval=1000, n_intervals=0, max_intervals=1)
 ])
 
 
