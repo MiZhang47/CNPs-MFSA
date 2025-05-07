@@ -4751,6 +4751,18 @@ def save_tab8_file(name, content, tab_folder='tab_8_uploads'):
     print(f"File saved at: {file_path}")
     return file_path
 
+@app.callback(
+    Output("summary-bar-count", "children"),
+    Output("summary-bar-area", "children"),
+    Input("auto-trigger", "n_intervals")
+)
+def load_default_if_available(n):
+    if not os.path.exists(DEFAULT_FILE_PATH):
+        return "No default data", ""
+    df = pd.read_csv(DEFAULT_FILE_PATH)
+    from CNPs_MFSA_Web import generate_summary_bar_charts_plotly
+    return generate_summary_bar_charts_plotly(df)
+
 # =========================
 #  Main Entrance
 # =========================
