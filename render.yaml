@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: cnps-mfsa-web
+    env: python
+    plan: free
+    buildCommand: "pip install -r requirements.txt"
+    startCommand: "gunicorn auth_wrapper:server"
+    envVars:
+      - key: DASH_AUTH_USERNAME
+        value: CNPs
+      - key: DASH_AUTH_PASSWORD
+        value: 123456
