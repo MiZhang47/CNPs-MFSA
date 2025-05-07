@@ -8,3 +8,4 @@ rdkit
 pyteomics
 matchms
 flask
+gunicorn
