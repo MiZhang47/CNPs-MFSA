@@ -1,5 +1,5 @@
 """
-Last updated: 2025/02
+Last updated: 2025/05
 Complex natural products (CNPs) Structure Annotation Tool constructed based on a modular fragmentation-based structural assembly (MFSA) strategy.
 """
 
@@ -10,13 +10,15 @@ Complex natural products (CNPs) Structure Annotation Tool constructed based on a
 import io  # Used for handling file streams
 import os  # Provides a way of using operating system-dependent functionalities
 import re  # Regular expression operations for string matching
-import uuid  # Generates unique identifiers for various objects
+import chardet
+import itertools # Generates top-k for neutral loss tab
 import base64  # Encoding and decoding operations for binary data
 import zipfile  # Handles zip file creation and extraction
 import pandas as pd  # Data manipulation and analysis library
 import numpy as np  # Numerical computation library
-from typing import Dict, Tuple  # Type hinting for function signatures
-from concurrent.futures import ThreadPoolExecutor  # Multithreading support to handle concurrent operations
+from typing import Optional, Tuple, List, Dict  # Type hinting for function signatures
+from itertools import combinations
+from collections import defaultdict
 
 # Import external libraries for chemical analysis and handling mass spectrometry data
 import sqlite3  # Provides SQLite database operations
@@ -25,6 +27,8 @@ from matchms import Spectrum, calculate_scores  # MatchMS library for handling m
 from matchms.similarity import CosineGreedy  # Cosine similarity scoring algorithm from MatchMS
 from rdkit import Chem  # RDKit library for chemical informatics and computational chemistry
 from rdkit.Chem import Draw  # RDKit's drawing utilities for visualizing molecular structures
+from rdkit.Chem import rdMolDescriptors
+from rdkit.Chem.Descriptors import MolWt
 
 # Import libraries for building and managing a web-based dashboard using Dash
 import dash  # Dash framework for building web applications
@@ -33,7 +37,8 @@ import dash_bootstrap_components as dbc  # Bootstrap components for Dash
 from dash.dependencies import Input, Output, State, MATCH, ALL  # Dash dependencies for interactive components
 import plotly.express as px  # Plotly Express for creating visualizations
 from flask import send_file  # Flask utility for sending files in response to HTTP requests
-
+from dash import dcc, dash_table
+import plotly.graph_objects as go
 
 # =========================
 #  Initialize the Dash app
@@ -56,7 +61,6 @@ global_results_featureion = {}  # Stores results from 'Feature Ion Extract' proc
 global_results_cosine = {}  # Stores results from 'Cosine Score Calculate' processing
 global_results_annotate = {}  # Stores results from 'Annotation' processing
 global_results_visualization = {}  # Stores results from 'Visualization' processing
-
 
 # =========================
 #  Dash Layout
@@ -755,21 +759,22 @@ app.layout = html.Div([  # Main container for the application
                                  style={'fontFamily': 'Arial', 'marginTop': '10px', 'color': '#007bff'})  # Placeholder for file paths
                     ], style={'width': '33%'}),  # Set container width for layout
 
-                    # Upload section for the Skeleton CSV file (single file)
+                    # Upload section for the pseudo-DB file (single file)
                     html.Div([
-                        html.H4('Import Skeleton CSV file:', style={'fontFamily': 'Arial'}),  # Header for Skeleton CSV file upload
+                        html.H4('Import pseudo-DB file:', style={'fontFamily': 'Arial'}),  # Header for Skeleton CSV
+                        # file upload
                         dcc.Upload(
-                            id='annotation-skeleton-upload-csv',
-                            children=html.Div('Drop or Select CSV File'),
+                            id='annotation-pseudo-DB-upload-db',
+                            children=html.Div('Drop or Select DB File'),
                             style={
                                 'width': '90%', 'height': '50px', 'lineHeight': '50px',
                                 'borderWidth': '1px', 'borderStyle': 'dashed',
                                 'borderRadius': '5px', 'textAlign': 'center',
                                 'margin': '10px', 'fontFamily': 'Arial'
                             },
-                            multiple=False  # Only one Skeleton CSV file allowed
+                            multiple=False
                         ),
-                        html.Div(id='annotation-skeleton-csv-file-path',
+                        html.Div(id='annotation-pseudo-DB-file-path',
                                  style={'fontFamily': 'Arial', 'marginTop': '10px', 'color': '#007bff'})  # Placeholder for file path
                     ], style={'width': '33%'}),
 
@@ -839,85 +844,80 @@ app.layout = html.Div([  # Main container for the application
         # Tab 8: Visualization
         dcc.Tab(label='8. Visualization', children=[
             html.Div([
-                # Container for uploading query CSV files
                 html.Div([
-                    html.Div([
-                        html.H4('Import Query CSV file (multiple files):', style={'fontFamily': 'Arial'}),  # Header for CSV file upload
-                        dcc.Upload(
-                            id='visualization-query-upload-csv',
-                            children=html.Div('Drop or Select CSV File'),
-                            style={
-                                'width': '90%', 'height': '50px', 'lineHeight': '50px',
-                                'borderWidth': '1px', 'borderStyle': 'dashed',
-                                'borderRadius': '5px', 'textAlign': 'center',
-                                'margin': '10px', 'fontFamily': 'Arial'
-                            },
-                            multiple=True  # Allow multiple CSV files
-                        ),
-                        html.Div(id='visualization-query-csv-file-path',
-                                 style={'fontFamily': 'Arial', 'marginTop': '10px', 'color': '#007bff'})  # Placeholder for file paths
-                    ], style={'width': '48%'}),
-                ], style={'display': 'flex', 'justifyContent': 'space-between'}),  # Align upload section
+                    html.H4('Import Query CSV file (multiple files):', style={'fontFamily': 'Arial'}),
+                    dcc.Upload(
+                        id='visualization-query-upload-csv',
+                        children=html.Div('Drop or Select CSV File'),
+                        style={
+                            'width': '90%', 'height': '50px', 'lineHeight': '50px',
+                            'borderWidth': '1px', 'borderStyle': 'dashed',
+                            'borderRadius': '5px', 'textAlign': 'center',
+                            'margin': '10px', 'fontFamily': 'Arial'
+                        },
+                        multiple=True
+                    ),
+                    html.Div(id='visualization-query-csv-file-path',
+                             style={'fontFamily': 'Arial', 'marginTop': '10px', 'color': '#007bff'})
+                ]),
 
-                # Button to trigger visualization
                 html.Button('Run Visualization', id='run-visualization', n_clicks=0,
                             style={'marginTop': '20px', 'fontFamily': 'Arial', 'padding': '10px 20px',
                                    'backgroundColor': '#007bff', 'color': 'white', 'border': 'none',
                                    'cursor': 'pointer', 'fontSize': '16px'}),
-                dbc.Card(
-                    [
-                        dbc.CardBody(
-                            [
-                                dbc.Row([
-                                    dbc.Col(
-                                        dcc.Graph(
-                                            id='scatter-plot',
-                                            style={"height": "700px"}
-                                        ),
-                                        width=8
-                                    ),
-                                    dbc.Col([
-                                        html.H3("Skeleton Structure",
-                                                style={"font-size": "18px"}),
-                                        html.Img(id='skeleton-image',
-                                                 src='',
-                                                 style={"max-width": "200px"}),
-                                        html.Br(),
-                                        html.H3("Acyl Structure R1",
-                                                style={"font-size": "18px"}),
-                                        html.Img(id='acyl-image-1',
-                                                 src='',
-                                                 style={"max-width": "200px"}),
-                                        html.Br(),
-                                        html.H3("Acyl Structure R2",
-                                                style={"font-size": "18px"}),
-                                        html.Img(id='acyl-image-2',
-                                                 src='',
-                                                 style={"max-width": "200px"})
-                                    ], width=3)
-                                ])
-                            ]
-                        )
-                    ],
-                    style={
-                        'border': '1px solid #ccc',
-                        'borderRadius': '5px',
-                        'padding': '10px',
-                        'marginTop': '50px',
-                        'marginBottom': '150px',
-                        'marginLeft': '150px',
-                        'marginRight': '150px',
-                    }
-                )
+
+                dbc.Card([
+                    dbc.CardBody([
+                        html.Div([
+                            html.Div(
+                                dcc.Graph(id='scatter-plot', style={"height": "700px"}),
+                                style={'width': '65%', 'paddingRight': '20px'}
+                            ),
+
+                            html.Div([
+                                html.H5("Annotation Structures", style={"fontSize": "20px", "marginBottom": "10px"}),
+
+                                html.Div(id='structure-gallery', style={
+                                    "maxHeight": "650px",
+                                    "overflowY": "scroll",
+                                    "overflowX": "auto",
+                                    "border": "1px solid #ddd",
+                                    "padding": "10px",
+                                    "backgroundColor": "#fafafa",
+                                    "display": "flex",
+                                    "flexWrap": "wrap",
+                                    "gap": "20px"
+                                }),
+
+                                html.Div(id='structure-modal-container')
+                            ], style={'width': '35%'})
+                        ], style={'display': 'flex', 'marginTop': '20px'})
+                    ])
+                ], style={
+                    'border': '1px solid #ccc',
+                    'borderRadius': '5px',
+                    'padding': '10px',
+                    'marginTop': '50px',
+                    'marginBottom': '30px',
+                    'marginLeft': '50px',
+                    'marginRight': '50px',
+                }),
+
+                html.Div([
+                    html.Div(id="summary-bar-count", style={'marginBottom': '30px'}),
+                    html.Div(id="summary-bar-area")
+                ]),
+
+                html.Div(id='filtered-table-container', style={'margin': '50px 50px 100px 50px'})
             ])
-        ], style={  # Style settings for the 'Visualization' tab
+        ], style={
             'border': '2px solid #d6d6d6',
             'backgroundColor': '#f1f1f1',
             'padding': '10px',
             'fontFamily': 'Arial',
             'fontSize': '16px',
-            'fontWeight': 'bold'},
-            selected_style={
+            'fontWeight': 'bold'
+        }, selected_style={
             'border': '2px solid #A9A9A9',
             'backgroundColor': '#A9A9A9',
             'color': 'white',
@@ -1259,22 +1259,36 @@ def run_target_recognition(n_clicks, csv_contents, mgf_contents, csv_filenames, 
                 print(f"No matching spectra found in the CSV file {csv_filename}.")
                 continue
 
-            # Add score columns for each type and filter non-zero score rows
+            # Add score columns for each type based on the calculated scores from the detection process
             for i, type_name in enumerate(type_names):
                 focal_csv[f'{type_name} Score'] = focal_csv.index.map(lambda x: scores_dict[type_name].get(x, 0))
 
+            # Create a list of score column names for easy access
             score_columns = [f'{type_name} Score' for type_name in type_names]
+
+            # Filter out rows where all the score columns are zero
             focal_csv = focal_csv[(focal_csv[score_columns] != 0).any(axis=1)]
             print(f"Rows after filtering for non-zero scores: {focal_csv.shape[0]}")
 
-            # Determine the type associated with the highest score
-            focal_csv['type'] = focal_csv[score_columns].idxmax(axis=1).str.replace(' Score', '')
+            # Determine the classification based on the logic for a two-class scenario:
+            # - If Type 1 has a non-zero score and Type 2 has a zero score, classify as Type 1.
+            # - If both Type 1 and Type 2 have non-zero scores (or only Type 2 has a score), classify as Type 2.
+            if len(score_columns) == 2:
+                focal_csv['type'] = focal_csv.apply(
+                    lambda row: type_names[0] if (row[score_columns[0]] != 0 and row[score_columns[1]] == 0)
+                    else type_names[1],
+                    axis=1
+                )
+            else:
+                # For scenarios with more than two types, fallback to the original maximum score logic
+                focal_csv['type'] = focal_csv[score_columns].idxmax(axis=1).str.replace(' Score', '')
 
             # Save the filtered CSV data to an output file
             focal_csv.to_csv(output_csv_file, encoding='UTF-8')
             all_output_paths.append((output_mgf_file, output_csv_file))
             print(f"Output MGF file saved to: {output_mgf_file}")
             print(f"Output CSV file saved to: {output_csv_file}")
+
 
         print("Recognition complete")
         return (f"Recognition and classification complete. Processed files saved to: "
@@ -1535,7 +1549,7 @@ def detect_recognize_spectra(filename: str, feature_formulas: list, min_mass: fl
             # Count hits based on the provided formulas and tolerance
             hits = 0
             for intensity_value, product_ion in zip(nor_intensity, product_ions):
-                if intensity_value > 0.1:
+                if intensity_value > 0.05:
                     for formula in feature_formulas:
                         mz_min, mz_max = recognize_mz_range(formula, charge, tolerance_ppm)
                         if mz_min <= product_ion <= mz_max:
@@ -2383,10 +2397,19 @@ def neutralloss_modify_types(add_clicks, remove_clicks, children):
             html.Div([
                 html.Label('Carbon Range 2 From :',
                            style={'fontFamily': 'Arial', 'fontWeight': 'bold', 'marginRight': '10px'}),
-                dcc.Input(id={'type': 'carbon-range-max2', 'index': new_index + 1}, type='text', placeholder='C30',
+                dcc.Input(id={'type': 'carbon-range-max2', 'index': new_index + 1}, type='text', placeholder='C20',
                           style={'width': '10%', 'marginRight': '10px', 'fontFamily': 'Arial'}),
                 html.Span('to', style={'marginRight': '10px', 'fontFamily': 'Arial'}),
-                dcc.Input(id={'type': 'carbon-range-min2', 'index': new_index + 1}, type='text', placeholder='C27',
+                dcc.Input(id={'type': 'carbon-range-min2', 'index': new_index + 1}, type='text', placeholder='C17',
+                          style={'width': '10%', 'marginRight': '10px', 'fontFamily': 'Arial'}),
+            ], style={'display': 'flex', 'alignItems': 'center', 'marginTop': '10px'}),
+            html.Div([
+                html.Label('Carbon Range 3 From :',
+                           style={'fontFamily': 'Arial', 'fontWeight': 'bold', 'marginRight': '10px'}),
+                dcc.Input(id={'type': 'carbon-range-max3', 'index': new_index + 1}, type='text', placeholder='C30',
+                          style={'width': '10%', 'marginRight': '10px', 'fontFamily': 'Arial'}),
+                html.Span('to', style={'marginRight': '10px', 'fontFamily': 'Arial'}),
+                dcc.Input(id={'type': 'carbon-range-min3', 'index': new_index + 1}, type='text', placeholder='C27',
                           style={'width': '10%', 'marginRight': '10px', 'fontFamily': 'Arial'}),
                 html.Button('✖', id={'type': 'remove-button-neutralloss', 'index': new_index + 1},
                             style={'marginLeft': '10px', 'color': 'red'})
@@ -2495,11 +2518,14 @@ def neutralloss_download(filename):
     State({'type': 'carbon-range-max1', 'index': ALL}, 'value'),
     State({'type': 'carbon-range-min1', 'index': ALL}, 'value'),
     State({'type': 'carbon-range-max2', 'index': ALL}, 'value'),
-    State({'type': 'carbon-range-min2', 'index': ALL}, 'value')
+    State({'type': 'carbon-range-min2', 'index': ALL}, 'value'),
+    State({'type': 'carbon-range-max3', 'index': ALL}, 'value'),
+    State({'type': 'carbon-range-min3', 'index': ALL}, 'value')
 )
 def run_neutral_loss_extraction(n_clicks, csv_filenames, csv_contents, mgf_filenames, mgf_contents, db_filename,
                                 db_content, charge, ppm, target_losses, loss_names,
-                                carbon_range_max1, carbon_range_min1, carbon_range_max2, carbon_range_min2):
+                                carbon_range_max1, carbon_range_min1, carbon_range_max2, carbon_range_min2,
+                                carbon_range_max3, carbon_range_min3):
     """
     Execute neutral loss extraction based on user-provided parameters and uploaded files.
 
@@ -2515,7 +2541,8 @@ def run_neutral_loss_extraction(n_clicks, csv_filenames, csv_contents, mgf_filen
         ppm: Tolerance in parts per million for mass range matching.
         target_losses: List of target loss formulas provided by the user.
         loss_names: List of names corresponding to each target loss.
-        carbon_range_max1, carbon_range_min1, carbon_range_max2, carbon_range_min2: Carbon range specifications.
+        carbon_range_max1, carbon_range_min1, carbon_range_max2, carbon_range_min2, carbon_range_max3,
+        carbon_range_min3: Carbon range specifications.
 
     Returns:
         Status message indicating the success or failure of the extraction process.
@@ -2575,7 +2602,9 @@ def run_neutral_loss_extraction(n_clicks, csv_filenames, csv_contents, mgf_filen
                 carbon_range_max1=carbon_range_max1,
                 carbon_range_min1=carbon_range_min1,
                 carbon_range_max2=carbon_range_max2,
-                carbon_range_min2=carbon_range_min2
+                carbon_range_min2=carbon_range_min2,
+                carbon_range_max3 = carbon_range_max3,
+                carbon_range_min3 = carbon_range_min3
             )
         except Exception as e:
             return f"Error processing files: {str(e)}"
@@ -2583,150 +2612,178 @@ def run_neutral_loss_extraction(n_clicks, csv_filenames, csv_contents, mgf_filen
     return f"Extraction complete for {len(csv_paths)} CSV file(s)."
 
 
-def neutralloss_process_files(input_path_csv, input_path_mgf, output_path_csv, db_path, target_losses, charge, ppm,
-                              loss_names,
-                              carbon_range_max1, carbon_range_min1, carbon_range_max2, carbon_range_min2):
+def neutralloss_process_files(input_path_csv, input_path_mgf, output_path_csv, db_path,
+                              target_losses, charge, ppm,
+                              loss_names, carbon_range_max1, carbon_range_min1,
+                              carbon_range_max2, carbon_range_min2,
+                              carbon_range_max3, carbon_range_min3):
     """
-    Process CSV and MGF files to find neutral loss matches based on target losses.
-
-    Parameters:
-        input_path_csv: Path to the input CSV file.
-        input_path_mgf: Path to the input MGF file.
-        output_path_csv: Path where the processed CSV file will be saved.
-        db_path: Path to the database file containing compounds.
-        target_losses: List of target loss formulas.
-        charge: Charge state for calculating m/z.
-        ppm: Tolerance in PPM for m/z matching.
-        loss_names: Names of the loss columns in the output CSV.
-        carbon_range_max1, carbon_range_min1, carbon_range_max2, carbon_range_min2: Carbon ranges for filtering.
-
-    Returns:
-        None
+    Process an input CSV and MGF file to extract neutral-loss matches:
+      1. Read the CSV and index by 'row ID', cleaning titles.
+      2. Load the formula m/z ranges from the SQLite DB (with given charge and ppm).
+      3. Read all spectra from the MGF into a dictionary keyed by title.
+      4. Initialize output columns for each loss group in the DataFrame.
+      5. Parse the user-provided carbon ranges for each loss group.
+      6. For each spectrum (peak):
+         a. Compute Top-3 matching ion pairs per loss group based on score.
+         b. Deduplicate by loss formula (keep only the highest-score pair per formula).
+         c. Expand all groups’ Top-K lists via Cartesian product so each combination
+            becomes its own output row.
+         d. Copy all original columns (including the computed row m/z) into each row.
+      7. Write the exploded results to the output CSV.
     """
-    print("Starting file processing")
-
-    # Read the input CSV
+    # 1) Read CSV and set 'row ID' as index
     df = pd.read_csv(input_path_csv)
-    print(f"Read CSV with {len(df)} rows")
-
-    # Check if 'row ID' column exists
     if 'row ID' not in df.columns:
-        raise ValueError("'row ID' column not found in the CSV file.")
-
+        raise ValueError("'row ID' column not found in input CSV.")
     df.set_index('row ID', inplace=True)
     df.index = df.index.map(clean_title)
 
-    # Compute m/z ranges for formulas from the DB
+    # 2) Load formula-to-m/z ranges from the neutral-loss database
     formula_ranges = read_formulas_from_NLdb(db_path, charge, ppm)
-    print(f"Formula ranges computed for DB")
 
-    # Read the MGF file and create a dictionary of spectra
+    # 3) Read MGF spectra into a dict for quick lookup
     spectra_dict = {}
     with mgf.read(input_path_mgf) as spectra:
         for spectrum in spectra:
             title = clean_title(spectrum['params']['title'])
             spectra_dict[title] = spectrum
-        print(f"Processed {len(spectra_dict)} spectra from MGF")
 
-    # Initialize columns for loss names in the dataframe
+    # 4) Initialize neutral-loss columns to 'none'
     for ln in loss_names:
         df[ln] = 'none'
+        df[ln + '_ion_pair'] = 'none'
+        df[ln + '_intensity_pair'] = 'none'
+        df[ln + '_score'] = 'none'
 
-    # Parse all carbon ranges first and save them in a list to avoid repeated parsing
-    # Assume that loss_names, target_losses, carbon_range_xxx have the same length
+    # 5) Parse all carbon-range inputs into integer tuples
     parsed_carbon_ranges = []
     for i in range(len(loss_names)):
         try:
-            cmax1_val = parse_carbon_range(carbon_range_max1[i])
-            cmin1_val = parse_carbon_range(carbon_range_min1[i])
-            cmax2_val = parse_carbon_range(carbon_range_max2[i])
-            cmin2_val = parse_carbon_range(carbon_range_min2[i])
+            parsed_carbon_ranges.append((
+                parse_carbon_range(carbon_range_max1[i]),
+                parse_carbon_range(carbon_range_min1[i]),
+                parse_carbon_range(carbon_range_max2[i]),
+                parse_carbon_range(carbon_range_min2[i]),
+                parse_carbon_range(carbon_range_max3[i]),
+                parse_carbon_range(carbon_range_min3[i]),
+            ))
         except Exception as e:
-            raise ValueError(f"Invalid carbon range input in group {i+1}: {e}")
-        parsed_carbon_ranges.append((cmax1_val, cmin1_val, cmax2_val, cmin2_val))
+            raise ValueError(f"Invalid carbon range in group {i+1}: {e}")
 
-    # Process each row in the CSV
-    for row_id in df.index:
+    # Keep a deep copy of the original DataFrame for row-by-row expansion
+    original_df = df.copy(deep=True)
+
+    output_records = []
+
+    # 6) Process each peak (row) in the original data
+    for row_id, orig_row in original_df.iterrows():
         if row_id not in spectra_dict:
             continue
+
         spectrum = spectra_dict[row_id]
-        precursor_ion = spectrum['params']['pepmass'][0]
-        df.at[row_id, 'row m/z'] = precursor_ion
-
+        mz_value = spectrum['params']['pepmass'][0]
         product_ions = spectrum['m/z array']
-        intensities = spectrum['intensity array']
+        intensities  = spectrum['intensity array']
 
-        # Find possible formulas based on m/z and db range
-        # find_matching_NLformulas here returns a single match or 'none'
-        # But if want to support multiple matches, need to rewrite
-        formulas = [find_matching_NLformulas(mz, formula_ranges) for mz in product_ions]
+        per_group_matches = []
 
-        # Test each group of Target Loss
-        for i, (loss_group, ln) in enumerate(zip(target_losses, loss_names)):
+        # 6a) Collect Top-3 matches per loss group, then dedupe by formula
+        for idx, (loss_group, ln) in enumerate(zip(target_losses, loss_names)):
+            # If no formulas provided, placeholder a single None entry
             if not loss_group:
-                # If no formula is entered in this group, skip
+                per_group_matches.append([(None, None, None, None, None)])
                 continue
-            cmax1_val, cmin1_val, cmax2_val, cmin2_val = parsed_carbon_ranges[i]
 
-            # Get the formula of carbon number = cmax1_val / cmin1_val
-            formulas_max_carbon_1 = [
-                f for f in formulas
-                if f != 'none' and mass.Composition(f).get('C', 0) == cmax1_val
-            ]
-            formulas_min_carbon_1 = [
-                f for f in formulas
-                if f != 'none' and mass.Composition(f).get('C', 0) == cmin1_val
+            cmax1, cmin1, cmax2, cmin2, cmax3, cmin3 = parsed_carbon_ranges[idx]
+
+            # Build a list of all (index, matched_formula)
+            formula_info = [
+                (i, find_matching_NLformulas(mz, formula_ranges))
+                for i, mz in enumerate(product_ions)
             ]
 
-            # Get the formula of carbon number = cmax2_val / cmin2_val
-            formulas_max_carbon_2 = [
-                f for f in formulas
-                if f != 'none' and mass.Composition(f).get('C', 0) == cmax2_val
-            ]
-            formulas_min_carbon_2 = [
-                f for f in formulas
-                if f != 'none' and mass.Composition(f).get('C', 0) == cmin2_val
-            ]
-
+            # 6a.i) Original matching logic for three carbon-range pairs
             matching_pairs = []
+            # First carbon range
+            fmax1 = [(i, f) for i, f in formula_info
+                     if f != 'none' and mass.Composition(f).get('C',0) == cmax1]
+            fmin1 = [(i, f) for i, f in formula_info
+                     if f != 'none' and mass.Composition(f).get('C',0) == cmin1]
+            for i1, f1 in fmax1:
+                for i2, f2 in fmin1:
+                    if check_specific_target_loss(specific_formula_difference(f1, f2), loss_group):
+                        matching_pairs.append((f1, f2, intensities[i1], intensities[i2]))
 
-            # The first pair of carbon ranges
-            for f1 in formulas_max_carbon_1:
-                for f2 in formulas_min_carbon_1:
-                    diff = specific_formula_difference(f1, f2)
-                    if check_specific_target_loss(diff, loss_group):
-                        idx1 = formulas.index(f1)
-                        idx2 = formulas.index(f2)
-                        intensity_avg = (intensities[idx1] + intensities[idx2]) / 2
-                        matching_pairs.append((f1, f2, intensity_avg))
+            # Second carbon range
+            fmax2 = [(i, f) for i, f in formula_info
+                     if f != 'none' and mass.Composition(f).get('C',0) == cmax2]
+            fmin2 = [(i, f) for i, f in formula_info
+                     if f != 'none' and mass.Composition(f).get('C',0) == cmin2]
+            for i1, f1 in fmax2:
+                for i2, f2 in fmin2:
+                    if check_specific_target_loss(specific_formula_difference(f1, f2), loss_group):
+                        matching_pairs.append((f1, f2, intensities[i1], intensities[i2]))
 
-            # The second pair of carbon ranges
-            for f1 in formulas_max_carbon_2:
-                for f2 in formulas_min_carbon_2:
-                    diff = specific_formula_difference(f1, f2)
-                    if check_specific_target_loss(diff, loss_group):
-                        idx1 = formulas.index(f1)
-                        idx2 = formulas.index(f2)
-                        intensity_avg = (intensities[idx1] + intensities[idx2]) / 2
-                        matching_pairs.append((f1, f2, intensity_avg))
+            # Third carbon range
+            fmax3 = [(i, f) for i, f in formula_info
+                     if f != 'none' and mass.Composition(f).get('C',0) == cmax3]
+            fmin3 = [(i, f) for i, f in formula_info
+                     if f != 'none' and mass.Composition(f).get('C',0) == cmin3]
+            for i1, f1 in fmax3:
+                for i2, f2 in fmin3:
+                    if check_specific_target_loss(specific_formula_difference(f1, f2), loss_group):
+                        matching_pairs.append((f1, f2, intensities[i1], intensities[i2]))
 
-            # Select the highest peak
+            # 6a.ii) Score each pair, sort, take Top-3
             if matching_pairs:
-                highest_intensity_pair = max(matching_pairs, key=lambda x: x[2])
-                best_formula_f1, best_formula_f2 = highest_intensity_pair[0], highest_intensity_pair[1]
-                best_loss = None
-                for target_loss in loss_group:
-                    target_elements = dict(mass.Composition(target_loss))
-                    if specific_formula_difference(best_formula_f1, best_formula_f2) == target_elements:
-                        best_loss = target_elements
-                        break
+                scored = [(f1, f2, i1, i2, compute_score(i1, i2))
+                          for f1, f2, i1, i2 in matching_pairs]
+                scored.sort(key=lambda x: x[4], reverse=True)
+                top3 = scored[:3]
 
-                if best_loss:
-                    best_loss_formula = dict_to_formula(best_loss)
-                    df.at[row_id, ln] = best_loss_formula
+                # 6a.iii) Deduplicate by loss formula: keep highest-score per unique formula
+                deduped = []
+                seen = set()
+                for f1, f2, i1, i2, score in top3:
+                    formula_str = dict_to_formula(specific_formula_difference(f1, f2))
+                    if formula_str not in seen:
+                        seen.add(formula_str)
+                        deduped.append((f1, f2, i1, i2, score))
+                per_group_matches.append(deduped)
+            else:
+                per_group_matches.append([(None, None, None, None, None)])
 
-    df.reset_index().to_csv(output_path_csv, index=False)
-    print(f"Processing complete for {len(df)} rows")
+        # 6b) Perform Cartesian product across all groups to expand rows
+        for combo in itertools.product(*per_group_matches):
+            rec = orig_row.to_dict()
+            rec['row ID']   = row_id
+            rec['row m/z']  = mz_value
+            for ln, (f1, f2, i1, i2, score) in zip(loss_names, combo):
+                if f1 is None:
+                    rec[ln]                    = 'none'
+                    rec[ln + '_ion_pair']      = 'none'
+                    rec[ln + '_intensity_pair']= 'none'
+                    rec[ln + '_score']         = 'none'
+                else:
+                    # Write back selected loss formula, ion pair, intensity pair, and score
+                    rec[ln]                    = dict_to_formula(specific_formula_difference(f1, f2))
+                    rec[ln + '_ion_pair']      = f"{f1} / {f2}"
+                    rec[ln + '_intensity_pair']= f"{i1} / {i2}"
+                    rec[ln + '_score']         = score
+            output_records.append(rec)
+
+    # 7) Convert to DataFrame
+    out_df = pd.DataFrame(output_records)
+
+    # 8) Reorder columns: original columns first, then loss columns
+    orig_cols = ['row ID'] + [col for col in original_df.columns if col != 'row ID']
+    loss_cols = sum([[ln, ln + '_ion_pair', ln + '_intensity_pair', ln + '_score'] for ln in loss_names], [])
+
+    # Combine and remove any duplicates just in case
+    final_cols = list(dict.fromkeys(orig_cols + loss_cols))
+    out_df[final_cols].to_csv(output_path_csv, index=False)
+
 
 def neutralloss_mz_range(formula: str, charge: int, ppm: float) -> Tuple[float, float]:
     mz = mass.calculate_mass(formula=formula, charge=charge)
@@ -2770,6 +2827,13 @@ def check_specific_target_loss(diff_comp: dict, target_losses: list) -> bool:
         if all(diff_comp.get(k, 0) == target_elements.get(k, 0) for k in target_elements):
             return True
     return False
+
+def compute_score(intensity1, intensity2):
+    IA = (intensity1 + intensity2) / 2
+    ID = abs(intensity1 - intensity2)
+    IDF = 1 / (1 + (ID / IA)) if IA != 0 else 0
+    score = IA * IDF / 100000
+    return round(score, 4)
 
 def clean_title(title):
     return str(title).strip()
@@ -2941,8 +3005,11 @@ def feature_ion_generate_zip_for_download(n_clicks, csv_filenames, csv_contents,
 
     zip_filename = os.path.join(UPLOAD_DIR, 'feature_ion_extraction_results.zip')
 
+    min_len = min(len(ion_names), len(ion_formulas), len(mass_min), len(mass_max_option),
+                  len(charges), len(tolerances), len(normalizations), len(tops))
+
     ion_sets_params = []
-    for i in range(len(ion_names)):
+    for i in range(min_len):
         ion_set_params = {
             'name': ion_names[i],
             'formulas': ion_formulas[i],
@@ -3019,6 +3086,17 @@ def feature_ion_display_selected_file_results(selected_file):
 def feature_ion_download(filename):
     return send_file(os.path.join(UPLOAD_DIR, filename), as_attachment=True)
 
+def safe_get_field(mr_dict, key, field):
+    """
+    Secure the fields safely from matched_results.
+    If the mr_dictkeyis dictates, it returns the mr_dictkeyfield,
+ otherwise it returns none.
+    """
+    val = mr_dict.get(key)
+    if isinstance(val, dict):
+        return val.get(field, 'none')
+    return 'none'
+
 def detect_formulas_in_spectra(spectrum, specific_formulas, params):
     """
     Detect specific formulas in a given spectrum based on mass and intensity parameters.
@@ -3085,70 +3163,127 @@ def detect_formulas_in_spectra(spectrum, specific_formulas, params):
 
 def process_FeatureIonExtract_parallel(mgf_path, csv_path, ion_sets_params, full_output_path):
     """
-    Process MGF and CSV files to detect feature ions and extract matching formulas in parallel.
-
-    Parameters:
-        mgf_path (str): Path to the MGF file containing mass spectra.
-        csv_path (str): Path to the CSV file containing metadata or row IDs.
-        ion_sets_params (list): List of parameters for each ion set including formulas, charge, tolerance, etc.
-        full_output_path (str): Path to save the processed CSV output.
-
-    Returns:
-        None: Saves the processed CSV data to the specified output path.
+    For each peak in the CSV/MGF pair, extract feature-ion matches per ion-set,
+    keep the top N by absolute intensity, then expand into one row per combination
+    of those Top-N lists across all ion-sets.
     """
+    # 1) Read the input CSV file and set 'row ID' as the DataFrame index if present
+    df = pd.read_csv(csv_path, encoding='utf-8')
+    if 'row ID' in df.columns:
+        df.set_index('row ID', inplace=True)
     try:
-        # Read the CSV file
-        df = pd.read_csv(csv_path, encoding='utf-8')
-        print(f"CSV Columns: {df.columns.tolist()}")
+        df.index = df.index.astype(int)
+    except:
+        # If conversion to int fails, leave the index as-is
+        pass
 
-        # Check and set 'row ID' as index if present
-        if 'row ID' in df.columns:
-            df.set_index('row ID', inplace=True)
-            print(f"'row ID' column found and set as index.")
-        else:
-            print(f"'row ID' column not found in {csv_path}. Proceeding without setting index.")
+    # 2) Load all spectra from the MGF file into a dictionary keyed by title
+    spectra_dict = {}
+    with mgf.read(mgf_path) as spectra:
+        for spectrum in spectra:
+            title = int(spectrum['params']['title'])
+            spectra_dict[title] = spectrum
 
-        # Read the MGF file and store spectra by title
-        spectra_dict = {}
-        with mgf.read(mgf_path) as spectra:
-            for spectrum in spectra:
-                title = int(spectrum['params']['title'])
-                spectra_dict[title] = spectrum
-        print(f"Total spectra read from MGF: {len(spectra_dict)}")
+    # 3) Prepare a dictionary of formulas for each ion-set
+    specific_formulas = {
+        params['name']: [f.strip() for f in params['formulas'].split(',')]
+        for params in ion_sets_params
+    }
 
-        # Prepare formulas for each ion set
-        specific_formulas = {}
-        for ion_set_params in ion_sets_params:
-            ion_set_name = ion_set_params['name']
-            specific_formulas[ion_set_name] = [x.strip() for x in ion_set_params['formulas'].split(',')]
-        print(f"Specific formulas prepared for ion sets: {specific_formulas.keys()}")
+    # 4) Make a deep copy of the original DataFrame for row expansion
+    original_df = df.copy(deep=True)
+    output_records = []
 
-        # Function to process individual ion sets
-        def process_ion_set(ion_set_params, ion_set_name):
-            matched_formulas = {}
-            for title, spectrum in spectra_dict.items():
-                result = detect_formulas_in_spectra(spectrum, specific_formulas[ion_set_name], ion_set_params)
-                if result:
-                    matched_formulas.update(result)
-            return ion_set_name, matched_formulas
+    # 5) Process each peak (row) in the original DataFrame
+    for row_id, orig_row in original_df.iterrows():
+        if row_id not in spectra_dict:
+            continue  # Skip if no matching spectrum
 
-        # Process ion sets in parallel
-        with ThreadPoolExecutor() as executor:
-            futures = [executor.submit(process_ion_set, ion_set_params, ion_set_params['name']) for ion_set_params in ion_sets_params]
+        spectrum = spectra_dict[row_id]
+        pepmz = spectrum['params']['pepmass'][0]
+        mzs   = spectrum['m/z array']
+        ints  = spectrum['intensity array']
 
-            # Collect results and update the DataFrame
-            for future in futures:
-                ion_set_name, matched_formulas = future.result()
-                df[ion_set_name] = df.index.map(lambda x: matched_formulas.get(x, 'none'))
+        per_group_topN = []  # Will hold Top-N lists for each ion-set
 
-        # Save the processed DataFrame to a CSV file
-        df.reset_index(inplace=True)
-        df.to_csv(full_output_path, index=False)
-        print(f"Data processed and saved to {full_output_path}")
+        # 5a) For each ion set, find all formula matches, sort, and keep Top-N
+        for params in ion_sets_params:
+            name       = params['name']
+            formulas   = specific_formulas[name]
+            min_mass   = params['mass_min']
+            tol_ppm    = params['tolerance']
+            charge     = params['charge']
+            norm_thr   = params['intensity_normalization']
+            top_n      = params['top_number'] or 3
+            max_opt    = params.get('mass_max_option', 'Use Precursor Ion')
 
-    except Exception as e:
-        print(f"Error during processing: {e}")
-        raise
+            # Determine upper mass limit: either user-specified or the precursor m/z
+            if max_opt != "Use Precursor Ion":
+                try:
+                    max_mass = float(max_opt)
+                except:
+                    max_mass = pepmz
+            else:
+                max_mass = pepmz
+
+            # Filter indices by m/z range and intensity threshold
+            idxs = [
+                i for i,(mz_val,inten) in enumerate(zip(mzs,ints))
+                if mz_val>min_mass and mz_val<max_mass and inten>norm_thr
+            ]
+
+            # Collect all matching formula-intensity pairs
+            candidates = []
+            for formula in formulas:
+                target_mz = mass.calculate_mass(formula=formula, charge=charge)
+                lo = target_mz*(1 - tol_ppm/1e6)
+                hi = target_mz*(1 + tol_ppm/1e6)
+                for i in idxs:
+                    if lo <= mzs[i] <= hi:
+                        candidates.append((formula, ints[i]))
+
+            # Sort candidates by absolute intensity, descending, then take Top-N
+            candidates.sort(key=lambda x: x[1], reverse=True)
+            top_list = candidates[:top_n] if candidates else [(None,None)]
+
+            # Attach a normalized score (intensity/100000) to each top hit
+            scored = []
+            for formula,inten in top_list:
+                if formula is None:
+                    scored.append((None, None, None))
+                else:
+                    score = round(inten/100000, 4)
+                    scored.append((formula, inten, score))
+            per_group_topN.append(scored)
+
+        # 6) Expand into one row per combination of Top-N hits across ion-sets
+        for combo in itertools.product(*per_group_topN):
+            rec = orig_row.to_dict()                # Copy original row data
+            rec['row ID']  = row_id                # Preserve original row ID
+            rec['row m/z'] = pepmz                 # Add precursor m/z value
+            # Assign each ion-set's selected formula/intensity/score
+            for params,(formula,inten,score) in zip(ion_sets_params,combo):
+                name = params['name']
+                if formula is None:
+                    rec[name]             = 'none'
+                    rec[f"{name}_intensity"] = 'none'
+                    rec[f"{name}_score"]     = 'none'
+                else:
+                    rec[name]             = formula
+                    rec[f"{name}_intensity"] = f"{inten:.2f}"
+                    rec[f"{name}_score"]     = f"{score:.4f}"
+            output_records.append(rec)
+
+    # 7) Build a DataFrame from the exploded records and write to CSV
+    out_df = pd.DataFrame(output_records)
+    # Ensure 'row ID' is the first column
+    cols = ['row ID'] + [c for c in out_df.columns if c!='row ID']
+    out_df.reset_index(inplace=True)
+    out_df = out_df[cols]
+    # Create output directory if needed, then write CSV without index
+    os.makedirs(os.path.dirname(full_output_path), exist_ok=True)
+    out_df.to_csv(full_output_path, index=False)
+    print(f"Saved processed file to: {full_output_path}")
 
 def save_tab5_file(name, content, tab_folder='tab_5_uploads'):
     """
@@ -3447,23 +3582,23 @@ def update_annotation_query_csv_file_path(csv_contents, csv_filenames):
     return csv_path_text
 
 @app.callback(
-    Output('annotation-skeleton-csv-file-path', 'children'),
-    Input('annotation-skeleton-upload-csv', 'contents'),
-    State('annotation-skeleton-upload-csv', 'filename')
+    Output('annotation-pseudo-DB-file-path', 'children'),
+    Input('annotation-pseudo-DB-upload-db', 'contents'),
+    State('annotation-pseudo-DB-upload-db', 'filename')
 )
-def update_annotation_skeleton_csv_file_path(content, filename):
-    print("Skeleton CSV upload triggered")
+def update_annotation_pseudo_DB_file_path(content, filename):
+    print("pseudo-DB upload triggered")
     if content and filename:
-        print(f"Skeleton CSV file name: {filename}")
+        print(f"pseudo-DB file name: {filename}")
         saved_file = save_uploaded_file(filename, content)
         if saved_file:
             print(f"File saved at: {saved_file}")
-            return f"Uploaded Skeleton CSV file: {filename}"
+            return f"Uploaded pseudo-DB file: {filename}"
         else:
             print("Failed to upload the file.")
             return "Failed to upload the file."
-    print("No CSV file uploaded")
-    return "No CSV file uploaded"
+    print("No DB file uploaded")
+    return "No DB file uploaded"
 
 @app.callback(
     Output('annotation-substituent-csv-file-path', 'children'),
@@ -3530,32 +3665,29 @@ def annotation_download(filename):
     Output('annotation-output', 'children'),
     Input('run-annotation', 'n_clicks'),
     State('annotation-query-upload-csv', 'filename'),
-    State('annotation-skeleton-upload-csv', 'filename'),
+    State('annotation-pseudo-DB-upload-db', 'filename'),
     State('annotation-substituent-upload-csv', 'filename'),
 )
-def run_annotation(n_clicks, query_csv, skeleton_csv, substituent_csv):
-    print(f"Run annotation clicked {n_clicks} times")
-    if n_clicks > 0:
-        # File paths for query, skeleton, and substituent files
-        query_file_path = os.path.join(UPLOAD_DIR, 'tab_7_uploads', query_csv[0])
-        skeleton_file_path = os.path.join(UPLOAD_DIR, 'tab_7_uploads', skeleton_csv)
-        substituent_file_path = os.path.join(UPLOAD_DIR, 'tab_7_uploads', substituent_csv[0])
+def run_annotation(n_clicks, query_fns, pseudo_db_fn, acyl_fns):
+    if not n_clicks:
+        return "Click Run Annotation to start processing."
+    query_file = query_fns[0]          if isinstance(query_fns, list) else query_fns
+    acyl_file  = acyl_fns[0]            if isinstance(acyl_fns, list)  else acyl_fns
+    query_path = os.path.join(UPLOAD_DIR, 'tab_7_uploads', query_file)
+    acyl_path  = os.path.join(UPLOAD_DIR, 'tab_7_uploads', acyl_file)
+    pseudo_path= os.path.join(UPLOAD_DIR, 'tab_7_uploads', pseudo_db_fn)
 
-        print(
-            f"Processing annotation with Query: {query_file_path}, Skeleton: {skeleton_file_path}, Substituent: {substituent_file_path}")
+    base, ext = os.path.splitext(query_file)
+    out_fname  = f"{base}-an{ext}"
+    out_path   = os.path.join(UPLOAD_DIR, 'tab_7_uploads', out_fname)
 
-        # Define output file path
-        original_filename = query_csv[0]
-        base_name, ext = os.path.splitext(original_filename)
-        output_filename = f"{base_name}-an{ext}"
-        output_file_path = os.path.join(UPLOAD_DIR, 'tab_7_uploads', output_filename)
-
-        # Execute annotation process
-        annotation_process_data(query_file_path, substituent_file_path, skeleton_file_path, output_file_path)
-        print(f"Annotation completed. Output saved to {output_file_path}")
-
-        return f"Annotation completed. Output saved to {output_file_path}"
-    return "Click Run Annotation to start processing."
+    annotation_process_data(
+        query_path,
+        acyl_path,
+        pseudo_path,
+        out_path
+    )
+    return f"Annotation completed. Output saved to {out_path}"
 
 def save_uploaded_file(name, content, folder='tab_7_uploads'):
     folder_path = os.path.join(UPLOAD_DIR, folder)
@@ -3592,281 +3724,682 @@ def save_tab7_file(name, content, tab_folder='tab_7_uploads'):
     print(f"File saved at: {file_path}")
     return file_path
 
-def count_element(molecular_formula, element):
-    pattern = re.compile(rf'{element}(\d*)')
-    match = pattern.search(molecular_formula)
+# --- Utility function: Count the number of a specific element in a formula ---
+def count_element(formula: str, element: str) -> int:
+    pattern = re.compile(rf"{element}(\d*)")
+    match = pattern.search(formula)
     if match:
         return int(match.group(1) or 1)
     return 0
 
-def annotation_process_data(path_csv, acyl_path_csv, skeleton_db_path_csv, output_path_csv):
-    print("Starting annotation process")
-    # Load input dataframes
-    df = pd.read_csv(path_csv)
-    acyl_df = pd.read_csv(acyl_path_csv)
-    skeleton_db = pd.read_csv(skeleton_db_path_csv)
-    print(f"Loaded query CSV with {len(df)} rows")
-    print(f"Loaded acyl CSV with {len(acyl_df)} rows")
-    print(f"Loaded skeleton DB CSV with {len(skeleton_db)} rows")
+# --- Compute the Index of Hydrogen Deficiency (IHD) ---
+def determine_ihd(row) -> float:
+    comp = row.get("Elemental Composition","")
+    C = count_element(comp,"C")
+    H = count_element(comp,"H")
+    N = count_element(comp,"N")
+    return (2*C + 2 + N - H)/2
 
-    def determine_a_parts(row):
-        if row['type'] == 'D':
-            o_count = count_element(row['C17 ion'], 'O')
-            h_count = count_element(row['C17 ion'], 'H')
-            o_count_c18 = count_element(row.get('C18 ion', ''), 'O')
-            if o_count == 2:
-                if h_count == 16:
-                    return '1,2-en-3-one'
-                elif h_count == 20:
-                    return '1,2-dihydro-3-ol'
-                elif h_count == 18:
-                    if o_count_c18 == 1:
-                        return '1,2-en-3-ol'
-                    elif o_count_c18 == 2:
-                        return '1,2-dihydro-3-one'
-            elif o_count == 3:
-                if h_count == 16:
-                    return '1,2-en-3-one'
-                elif h_count == 20:
-                    return '1,2-dihydro-3-ol'
-                elif h_count == 18:
-                    if o_count_c18 == 1:
-                        return '1,2-en-3-ol'
-                    elif o_count_c18 == 2:
-                        return '1,2-dihydro-3-one'
-        elif row['type'] == 'MD':
-            if row['C15 ion'] != 'none' and row.get('C3 loss', '') != 'none':
-                return 'bicyclo [2.2.1] heptane ring'
-            elif row['C15 ion'] == 'none':
-                return '1-alkyl-3-ol'
-        return 'others'
+# --- Normalize formula (C, H first, then others alphabetically) ---
+def normalize_formula(formula: str) -> str:
+    comp = mass.Composition(formula or "")
+    parts = []
+    for e in ("C","H"):
+        if comp.get(e):
+            parts.append(f"{e}{comp[e]}")
+    for e in sorted(set(comp)-{"C","H"}):
+        parts.append(f"{e}{comp[e]}")
+    return "".join(parts)
 
-    df['A part'] = df.apply(determine_a_parts, axis=1)
+# --- Solver: Find (x, y) such that 2*x + 7*y = remain (with limits) ---
+def solve_2_7(remain: int) -> Optional[Tuple[int, int]]:
+    max_x, max_y = 3, 3
+    for y in range(0, min(remain // 7, max_y) + 1):
+        rest = remain - 7 * y
+        if rest >= 0 and rest % 2 == 0:
+            x = rest // 2
+            if x <= max_x:
+                return x, y
+    return None
 
-    def determine_b_parts(row):
-        if row['type'] == 'D':
-            return row['B part']
-        elif row['type'] == 'MD':
-            c_count_c27 = count_element(row.get('C27 ion', ''), 'C')
-            if c_count_c27 == 27 or row.get('C3 loss', '') != 'none':
-                return '6,7-epoxy'
-            elif row.get('C27 ion', '') == 'none' or row.get('C3 loss', '') == 'none':
-                return '6,7-epoxy'
-    df['B part'] = df.apply(determine_b_parts, axis=1)
+# --- Solver: 2*x + 7*y + 4*z + 5*m = remain, minimize total parts, all vars ≤ 5 ---
+def solve_2_9_10_7_11(remain:int)->Optional[Tuple[int,int,int,int,int]]:
+    best=None
+    for a in range(6):
+        for b in range(3):
+            for c in range(3):
+                for d in range(4):
+                    for e in range(3):
+                        if 2*a+9*b+10*c+7*d+11*e==remain:
+                            tot=a+b+c+d+e
+                            if best is None or tot<best[0]:
+                                best=(tot,a,b,c,d,e)
+    return best[1:] if best else None
 
-    def determine_c_parts(row):
-        if row['type'] == 'D' and row['adduct ion'] == '[M+H-H2O]+':
-            return '9,13,14-triol'
-        elif row['type'] == 'MD':
-            return '9,13,14-orthoester'
+def solve_2_7_4_5(remain:int)->List[Tuple[int,int,int,int]]:
+    out=[]
+    for x in range(6):
+        for y in range(6):
+            for z in range(6):
+                if 2*x+7*y+4*z==remain:
+                    out.append((x,y,z,0))
+    for x in range(6):
+        for m in range(6):
+            if 2*x+5*m==remain:
+                out.append((x,0,0,m))
+    return out
+
+# --- Determine number and type of substituent fragments ---
+def determine_substitution(row):
+    C_total=count_element(row.get("elemental composition",""),"C")
+    t=row.get("type","")
+    rows=[]
+    if t=="D":
+        remain=C_total-20
+        sol=solve_2_9_10_7_11(remain)
+        if sol:
+            names=["C2","C9","C10","C7","C11"]
+            terms=[f"{n}*{c}" for n,c in zip(names,sol) if c>0]
+            subs=sum(([n]*c for n,c in zip(names,sol)),[])
+            new=row.copy()
+            new["Sub No."]=len(subs)
+            new["Sub Carbon"]=", ".join(sorted(set(subs),key=lambda x:int(x[1:])))
+            new["Sub_An"]="+".join(terms)
+            rows.append(new)
+    elif t=="MD":
+        core_map={"C9":29,"C10":30,"C14":34}
+        for frag,core in core_map.items():
+            if frag in row.get("M part",""):
+                remain=C_total-core
+                for sol in solve_2_7_4_5(remain):
+                    names=["C2","C7","C4","C5"]
+                    terms=[f"{n}*{c}" for n,c in zip(names,sol) if c>0]
+                    subs=sum(([n]*c for n,c in zip(names,sol)),[])
+                    new=row.copy()
+                    new["Sub No."]=len(subs)
+                    new["Sub Carbon"]=", ".join(sorted(set(subs),key=lambda x:int(x[1:])))
+                    new["Sub_An"]="+".join(terms)
+                    rows.append(new)
+                break
+    if rows: return rows
+    row["Sub No."]=0; row["Sub Carbon"]=""; row["Sub_An"]=""
+    return [row]
+
+# ------ Part A ------
+def determine_a_parts(row):
+    if row['type']=="D":
+        o = count_element(row['C17 ion'],"O")
+        h = count_element(row['C17 ion'],"H")
+        o18 = count_element(row.get('C18 ion',""),"O")
+        if o in (2,3):
+            if h==16: return "1,2-en-3-one"
+            if h==20: return "1,2-dihydro-3-ol"
+            if h==18:
+                if o18==1: return "1,2-en-3-ol"
+                if o18==2: return "1,2-dihydro-3-one"
+    elif row['type']=="MD":
+        try: c16 = float(row.get("C16 ion_score",0))
+        except: c16=0
+        c15 = str(row.get("C15 ion","")).strip().lower()
+        if c15=="none":
+            if row.get("C16 ion")== "C16H16O3" and row.get("C20 ion")== "C20H16O2":
+                return "1-alkyl-2-ol-3-one"
+            if row.get("C16 ion")== "C16H18O3" and row.get("C20 ion")== "C20H18O2":
+                return "1-alkyl-2-ol-3-ol"
+        if row.get("C15 ion")== "C15H22O2" and row.get("C16 ion")== "C16H16O3":
+            return "bicyclo [2.2.1] heptane ring"
+        if row.get("C14 ion")== "C14H14O3" and row.get("C19 ion") in ("C19H18O4","C19H20O4"):
+            return "bicyclo [2.2.1] heptane ring"
+        if row.get("C14 loss")== "C14H24O2":
+            if row.get("C14 ion")== "C14H14O3" and row.get("C19 ion") in ("C19H18O4","C19H20O4"):
+                return "bicyclo [2.2.1] heptane ring"
+            elif row.get("C19 ion")== "C19H18O4":
+                return "bicyclo [2.2.1] heptane ring"
+        if row.get("C14 ion")== "C14H14O3" and row.get("C15 ion") in ("C15H22O2","C15H22O3") and row.get("C19 ion")== "C19H18O3":
+            return "bicyclo [2.2.1] heptane ring"
+        if row.get("C15 ion")== "C15H22O3" and row.get("C14 loss")== "C14H24O4" and (row.get("C16 ion","")=="none" or c16<1):
+            return "3,4-seco"
+        if row.get("C20 ion") in ("C20H22O3","C20H20O3","C20H18O2") and row["IHD"]>11:
+            return "1-alkyl-3-ol"
+        return "1-alkyl-3-one"
+    return "others"
+
+# ------ Part B ------
+def determine_b_parts(row, df):
+    if row['type'] == "D":
+        try:
+            s = float(row.get("C19 ion_score", 0))
+        except:
+            s = 0
+        if row.get("C19 ion") == "C19H20O1" and s >= 1:
+            try:
+                c3 = float(row.get("C3 loss_score", 0))
+            except:
+                c3 = 0
+            if c3 <= 100:
+                return "5-ol-6,7-diol"
+
+        if row.get("C3 loss") == "C3H4O2" and count_element(row.get("C17 ion", ""), "O") in (2, 3):
+            return "5-ol-6,7-epoxy"
+
+        if row.get("C15 ion") == "C15H18O2":
+            if row.get("adduct ion") == "[M+NH4]+":
+                rt, ec = row["row retention time"], row["elemental composition"]
+                cand = df[
+                    (abs(df["row retention time"] - rt) <= 0.1) &
+                    (df["elemental composition"] == ec) &
+                    (df["adduct ion"] == "[M+H]+")
+                    ]
+                if not cand.empty:
+                    return "5-ol-4,6-epoxy"
+            return "5-ol-4,7-epoxy"
+
+        return "5-ol-6,7-ene"
+
+    elif row['type'] == "MD":
+        if any(row.get(c, "none") != "none" for c in ("C3 loss", "C17 ion", "C27 ion")):
+            return "5-ol-6,7-epoxy"
+
+    return "others"
+
+# ------ Part C ------
+def determine_c_parts(df: pd.DataFrame) -> pd.Series:
+    triol_ids=set()
+    for _,r in df.iterrows():
+        if r["type"]=="D" and r["adduct ion"]=="[M+H-H2O]+":
+            sp=r.get("same peak","")
+            if isinstance(sp,str):
+                for i in sp.split(","):
+                    if i.isdigit(): triol_ids.add(int(i))
+    def f(row):
+        if int(row["row ID"]) in triol_ids: return "9,13,14-triol"
+        return "9,13,14-orthoester"
+    return df.apply(f,axis=1)
+
+# ------ Part C-12 ------
+def determine_c12(row):
+    if row["type"]=="D":
+        if count_element(row["C17 ion"],"O")==2: return "no C-12"
+        return "with C-12"
+    elif row["type"]=="MD":
+        if count_element(row.get("C14 loss",""),"O")==2:
+            return "with C-12"
+    return "no C-12"
+
+# ------ Part C-18 ------
+def determine_c18(row,df):
+    if row["type"]!="MD": return "no C-18"
+    ad,rt,ec=row["adduct ion"],row["row retention time"],row["elemental composition"]
+    if ad=="[M+H]+": targets=("[M+H]+","[M+NH4]+")
+    elif ad=="[M+NH4]+": targets=("[M+H]+",)
+    else: return "no C-18"
+    cands=df[(abs(df["row retention time"]-rt)<=0.05)&(df["adduct ion"].isin(targets))&(df.index!=row.name)]
+    allowed = {
+        "[M+H]+":[{"C":7,"H":6,"O":2,"N":0},{"C":2,"H":4,"O":2,"N":0},{"C":5,"H":10,"O":2,"N":0},{"C":4,"H":8,"O":2,"N":0}],
+        "[M+NH4]+":[{"C":7,"H":10,"O":2,"N":1},{"C":2,"H":8,"O":2,"N":1},{"C":5,"H":14,"O":2,"N":1},{"C":4,"H":12,"O":2,"N":1}]
+    }
+    for _,m in cands.iterrows():
+        diff=calculate_formula_difference(ec,m["elemental composition"])
+        if diff in allowed.get(ad,[]): return "with C-18"
+    return "no C-18"
+
+# ------ Olefinic ------
+def determine_olefinic_part(row):
+    if row.get("C5 ion")== "C5H4O" or row.get("C6 ion")== "C6H6O":
+        return "2,4-olefinic"
+    return "others"
+
+# ------ Part M ------
+def determine_m_parts(row):
+    if row["type"]!="MD": return ["others"]
+    parts=[]
+    ion=row.get("C10 ion","")
+    try: score=float(row.get("C10 ion_score",0))
+    except: score=0
+    if ion=="C10H16O3": parts.append("C10 ring with one substituents and a hydroxyl group")
+    elif ion=="C10H14O3": parts.append("C10 ring with two substituents and a hydroxyl group")
+    elif ion=="C10H12O3" and score>0.015: parts.append("C10 ring with three substituents and a hydroxyl group")
+    # loss-based
+    loss_map={
+        "C9":("C9 loss","C9 loss_score"),
+        "C10":("C10 loss","C10 loss_score"),
+        "C14":("C14 loss","C14 loss_score")
+    }
+    for k,(col,_) in loss_map.items():
+        lf=row.get(col,"")
+        if lf!="none":
+            h,o=count_element(lf,"H"),count_element(lf,"O")
+            if k=="C10":
+                if h==18 and o==2: parts.append("C10 ring with no substituents")
+                elif h==16 and o==2: parts.append("C10 ring with one substituent")
+                elif h==16 and o==3: parts.append("C10 ring with one substituents and a hydroxyl group")
+                elif h==14 and o==2: parts.append("C10 ring with two substituents")
+            elif k=="C9" and h==16: parts.append("C9 ring with no substituents")
+            elif k=="C14" and o==2: parts.append("C14 ring with an olenfinic")
+    return parts or ["others"]
+
+# ------ Acyl ------
+def determine_acyl_parts(row,acyl_df):
+    # loss-based
+    parts=[]
+    loss_map={
+        "C2 loss":{"C2H4O2":"acyl"},
+        "C7 loss":{"C7H6O2":"benzoyl"},
+        "C9 loss":{"C9H8O2":"cinnamoyl","C9H8O3":"coumaroyl","C9H18O2":"nonanoyl"},
+        "C10 loss":{"C10H10O4":"feruloyl","C10H20O2":"decanoyl"},
+        "C11 loss":{"C11H22O2":"undecanoyl"}
+    }
+    for col,d in loss_map.items():
+        f=row.get(col,"")
+        if f in d:
+            try: sc=float(row.get(f"{col}_score",0))
+            except: sc=None
+            parts.append(f"{d[f]}({sc:.2f})" if sc is not None else d[f])
+    # ion-based
+    norm_map=acyl_df.groupby(acyl_df["Acyl Formula"].map(normalize_formula))["Identification"].apply(list).to_dict()
+    for ion_col in ("Acyl A ion","Acyl B ion"):
+        ions=str(row.get(ion_col,"")).split(",")
+        scores=str(row.get(f"{ion_col}_score","")).split(",")
+        for ion,sc in zip(ions+[""]*10,scores+[""]*10):
+            ion=ion.strip(); sc=sc.strip()
+            if not ion or ion.lower()=="none": break
+            for ident in norm_map.get(normalize_formula(ion),[]):
+                try: s=float(sc)
+                except: s=None
+                parts.append(f"{ident}({s:.2f})" if s is not None else ident)
+    return ",".join(dict.fromkeys(parts)) or "others"
+
+def refine_acyl_parts_by_olefinic(row,acyl_df):
+    if row.get("olefinic position")!="2,4-olefinic": return row.get("Acyl part","")
+    ents=[e.strip() for e in str(row.get("Acyl part","")).split(",") if e.strip()]
+    name2f={}
+    for e in ents:
+        nm=re.match(r"(.+?)(?:\(|$)",e).group(1)
+        sel=acyl_df[acyl_df["Identification"]==nm]
+        if not sel.empty: name2f[nm]=sel.iloc[0]["Acyl Formula"]
+    rm=set()
+    for grp in defaultdict(list, **{f:[] for f in set(name2f.values())}).values():
+        ien=[n for n in name2f if "ienoyl" in n]
+        ox=[n for n in name2f if "oxo" in n]
+        if ien and ox: rm.update(ox)
+    return ",".join([e for e in ents if re.match(r"(.+?)(?:\(|$)",e).group(1) not in rm])
+
+def determine_select_acyl(row,acyl_df):
+    try: sub_no=int(row.get("Sub No.",0))
+    except: sub_no=0
+    if sub_no==0: return "none"
+    subs=[c.strip() for c in str(row.get("Sub Carbon","")).split(",") if c.strip().startswith("C")]
+    raw=[p.strip() for p in str(row.get("Acyl part","")).split(",") if p.strip()]
+    parsed=[(re.match(r"(.+?)\(([\d\.]+)\)",p).group(1),float(re.match(r".+?\(([\d\.]+)\)",p).group(1))) if "(" in p else (p,None) for p in raw]
+    corr={2:"acyl",4:"isobutyryl",5:"2-methylbutyryl",7:"benzoyl"}
+    def cands(parts):
+        out=[]
+        for name,score in parts:
+            sel=acyl_df[acyl_df["Identification"]==name]
+            if not sel.empty:
+                out.append((score or 0,name,count_element(sel.iloc[0]["Acyl Formula"],"C")))
+        return out
+    # two distinct
+    if sub_no==2 and len(subs)==2:
+        n1,n2=int(subs[0][1:]),int(subs[1][1:]); total=n1+n2
+        allc=cands(parsed)
+        pairs=[((s1,n1),(s2,n2)) for s1,n1,c1 in allc for s2,n2,c2 in allc if n1!=n2 and c1+c2==total]
+        if pairs:
+            best=max(pairs,key=lambda pr: pr[0][0]+pr[1][0])
+            return ",".join(dict.fromkeys([best[0][1],best[1][1]]))
+    # identical double
+    if sub_no==2 and len(subs)==1:
+        n=int(subs[0][1:]); total=2*n
+        allc=cands(parsed)
+        pairs=[((s1,n1),(s2,n2)) for (s1,n1,c1),(s2,n2,c2) in combinations(allc,2) if c1+c2==total]
+        if pairs:
+            best=max(pairs,key=lambda pr: pr[0][0]+pr[1][0])
+            return ",".join(dict.fromkeys([best[0][1],best[1][1]]))
+    # per-carbon
+    valid=[]
+    for sc in subs:
+        n=int(sc[1:]) if sc[1:].isdigit() else None
+        if n:
+            cands_i=[(score,name) for name,score in parsed for _,row in acyl_df[acyl_df["Identification"]==name].iterrows() if count_element(row["Acyl Formula"],"C")==n]
+            if cands_i:
+                valid.append(max(cands_i,key=lambda x:x[0])[1])
+            elif corr.get(n):
+                valid.append(corr[n])
+    return ",".join(dict.fromkeys(valid)) or "none"
+
+def double_check_acyl_parts(row,acyl_df):
+    corr_map={2:"acyl",4:"isobutyryl",5:"2-methylbutyryl",7:"benzoyl"}
+    orig=[p.strip() for p in str(row.get("Correct Acyl part","")).split(",") if p.strip()]
+    pat=re.findall(r"C(\d+)\*(\d+)",row.get("Sub_An",""))
+    if not pat: return ",".join(orig)
+    carbon_to_ident={}
+    for ident in orig:
+        sel=acyl_df[acyl_df["Identification"]==ident]
+        if not sel.empty:
+            c=count_element(sel.iloc[0]["Acyl Formula"],"C")
+            carbon_to_ident[c]=ident
+    res=[]
+    for c_str,count_str in pat:
+        c_num,cnt=int(c_str),int(count_str)
+        ident=carbon_to_ident.get(c_num, corr_map.get(c_num))
+        if ident:
+            res+= [ident]*cnt
+    return ",".join(res) or ",".join(orig)
+
+def _sort_key(s: str):
+    m = re.match(r'^([A-Za-z]+)(\d+)$', s)
+    if m:
+        return (m.group(1), int(m.group(2)))
+    else:
+        return (s, 0)
+
+def generate_composite_key_list(row: pd.Series, id_cols: list) -> list:
+    parts = []
+    for col in id_cols:
+        val = row.get(col)
+        if isinstance(val, str):
+            v = val.strip()
+            if v and v.lower() != 'none':
+                parts.append(v)
+    return sorted(parts, key=_sort_key)
+
+def build_db_annotation_mapping(db_path: str) -> dict:
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+    cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
+    tables = [r[0] for r in cursor.fetchall()]
+    mapping = {}
+    for tbl in tables:
+        df_tbl = pd.read_sql_query(f"SELECT * FROM '{tbl}'", conn)
+        part_cols = [c for c in df_tbl.columns if c.endswith(' parts')]
+        if not part_cols:
+            continue
+        for _, db_row in df_tbl.iterrows():
+            parts = []
+            for col in part_cols:
+                val = str(db_row.get(col, '')).strip()
+                if not val or val.lower() in ('none', 'others'):
+                    continue
+                parts.append(val)
+            key = tuple(sorted(parts, key=_sort_key))
+            mapping.setdefault(key, []).append(
+                (db_row.get('New SMILES'), db_row.get('Number'))
+            )
+    conn.close()
+    return mapping
+
+def annotate_df_with_db(df: pd.DataFrame, db_path: str) -> pd.DataFrame:
+    mapping = build_db_annotation_mapping(db_path)
+    id_cols = [c for c in df.columns if c.endswith('_id')]
+
+    expanded_rows = []
+    for _, row in df.iterrows():
+        key = tuple(generate_composite_key_list(row, id_cols))
+        matches = mapping.get(key)
+        if matches:
+            for smiles, num in matches:
+                new_row = row.copy()
+                new_row['Annotation SMILES'] = smiles
+                new_row['Annotation ID']      = num
+                expanded_rows.append(new_row)
         else:
-            return '9,13,14-orthoester'
-    df['C part'] = df.apply(determine_c_parts, axis=1)
+            new_row = row.copy()
+            new_row['Annotation SMILES'] = None
+            new_row['Annotation ID']      = None
+            expanded_rows.append(new_row)
 
-    def determine_c12(row):
-        if row['type'] == 'D':
-            o_count = count_element(row['C17 ion'], 'O')
-            if o_count == 2:
-                return 'no C-12'
-            elif o_count == 3:
-                return 'with C-12'
-        return 'others'
-    df['C-12'] = df.apply(determine_c12, axis=1)
+    df_out = pd.DataFrame(expanded_rows).reset_index(drop=True)
+    return df_out
 
-    def determine_m_parts(row):
-        if row['type'] == 'MD':
-            C10_h_count = count_element(row.get('C10 loss', ''), 'H')
-            if C10_h_count == 18:
-                return 'C10 ring with no substituents'
-            elif C10_h_count == 16:
-                return 'C10 ring with one substituents'
-            elif C10_h_count == 14:
-                return 'C10 ring with two substituents'
-            elif C10_h_count == 12:
-                return 'C10 ring with three substituents'
-            elif C10_h_count == 10:
-                return 'C10 ring with four substituents'
-            C9_h_count = count_element(row.get('C9 loss', ''), 'H')
-            if C9_h_count == 16:
-                return 'C9 ring with no substituents'
-            C14_h_count = count_element(row.get('C14 loss', ''), 'H')
-            if C14_h_count == 24:
-                return 'C14 ring with an olenfinic'
-        return 'others'
-    df['M part'] = df.apply(determine_m_parts, axis=1)
+def add_aglycone_type(df: pd.DataFrame) -> pd.DataFrame:
+    def f(r):
+        for c in ("A_id","B_id","C_id"):
+            if str(r[c]).strip().lower() in ("","none"): return "none"
+        parts=[r["A_id"],r["B_id"],r["C_id"]]
+        m=str(r["M_id"]).strip()
+        if m.lower() not in ("","none"): parts.append(m)
+        return "".join(parts)
+    df["Aglycone Type"]=df.apply(f,axis=1)
+    cols=list(df.columns)
+    ai=cols.index("Aglycone Type"); si=cols.index("Annotation SMILES")
+    cols.insert(si,cols.pop(ai))
+    return df[cols]
 
-    def determine_acyl_parts(row):
-        acyl_parts = []
-        if row['C2 loss'] == 'C2H4O2':
-            acyl_parts.append('acyl')
+# --- Scoring function for each row ---
+def get_scores_by_parts(row):
+    score_cols = []
+    type = row.get('type', '').strip()
 
-        if row['Acyl ion'] != 'none':
-            acyl_ions = row['Acyl ion'].split(',')
-            acyl_formulas = acyl_df['Acyl Formula'].tolist()
-            identifications = acyl_df['Identification'].tolist()
+    if type == 'MD':
+        # M part scoring
+        m_part = row.get('M part', '')
+        if 'C10 ring' in m_part:
+            if 'substituent' in m_part or 'substituents' in m_part:
+                score_cols.append('C10 ion_score')
+            else:
+                score_cols.append('C10 loss_score')
+        elif 'C9 ring' in m_part:
+            score_cols.append('C9 loss_score')
+        elif 'C14 ring' in m_part:
+            score_cols.append('C14 loss_score')
 
-            for ion in acyl_ions:
-                matches = [identifications[i] for i, formula in enumerate(acyl_formulas) if
-                           formula.strip() == ion.strip()]
-                if matches:
-                    acyl_parts.extend(matches)
+        # A part scoring
+        a_part = row.get('A part', '')
+        if a_part == 'bicyclo [2.2.1] heptane ring':
+            score_cols.extend(['C14 ion_score', 'C19 ion_score'])
+        elif a_part == '3,4-seco':
+            score_cols.extend(['C15 ion_score', 'C16 ion_score'])
+        elif a_part in ('1-alkyl-3-ol', '1-alkyl-3-one'):
+            score_cols.append('C20 ion_score')
+        elif a_part in ('1-alkyl-2-ol-3-one', '1-alkyl-2-ol-3-ol'):
+            score_cols.extend(['C16 ion_score', 'C20 ion_score'])
 
-        if not acyl_parts:
-            return 'others'
-        return ','.join(acyl_parts)
-    df['Acyl part'] = df.apply(determine_acyl_parts, axis=1)
+        # B part scoring
+        b_part = row.get('B part', '')
+        if b_part == '5-ol-6,7-epoxy':
+            score_cols.extend(['C17 ion_score', 'C27 ion_score', 'C3 loss_score'])
 
-    def determine_acyl_numb(row):
-        acyl_numb = []
-        if row['C2 loss'] == 'C2H4O2':
-            acyl_numb.append('R1')
+        # C-12 and C-18 bonus scores
+        if row.get('C-12') == 'with C-12':
+            score_cols.append('C19 ion_score')
+        if row.get('C-18') == 'with C-18':
+            score_cols.extend(['C18 ion_score', 'C18 loss_score'])
 
-        if row['Acyl ion'] != 'none':
-            acyl_ions = row['Acyl ion'].split(',')
-            acyl_formulas = acyl_df['Acyl Formula'].tolist()
-            r_parts = acyl_df['R parts'].tolist()
+    elif type == 'D':
+        # A part
+        a_part = row.get('A part', '')
+        if a_part in ('1,2-en-3-one', '1,2-dihydro-3-ol'):
+            score_cols.append('C17 ion_score')
+        elif a_part in ('1,2-en-3-ol', '1,2-dihydro-3-one'):
+            score_cols.extend(['C17 ion_score', 'C18 ion_score'])
 
-            for ion in acyl_ions:
-                matches = [r_parts[i] for i, formula in enumerate(acyl_formulas) if formula.strip() == ion.strip()]
-                if matches:
-                    acyl_numb.extend(matches)
+        # B part
+        b_part = row.get('B part', '')
+        if b_part == '5-ol-6,7-diol':
+            score_cols.append('C19 ion_score')
+        elif b_part == '5-ol-6,7-epoxy':
+            score_cols.append('C17 ion_score')
+        elif b_part in ('5-ol-4,6-epoxy', '5-ol-4,7-epoxy'):
+            score_cols.append('C15 ion_score')
 
-        if not acyl_numb:
-            return 'others'
-        return ','.join(acyl_numb)
-    df['Acyl Number'] = df.apply(determine_acyl_numb, axis=1)
+    # Olefinic scoring
+    if row.get('olefinic position') == '2,4-olefinic':
+        score_cols.extend(['C5 ion_score', 'C6 ion_score'])
 
-    def determine_acyl_simile(row):
-        acyl_simile = []
-        if row['C2 loss'] == 'C2H4O2':
-            acyl_simile.append('CC(=O)*')
-
-        if row['Acyl ion'] != 'none':
-            acyl_ions = row['Acyl ion'].split(',')
-            acyl_formulas = acyl_df['Acyl Formula'].tolist()
-            acyl_SMILES = acyl_df['Acyl SMILES'].tolist()
-
-            for ion in acyl_ions:
-                matches = [acyl_SMILES[i] for i, formula in enumerate(acyl_formulas) if formula.strip() == ion.strip()]
-                if matches:
-                    acyl_simile.extend(matches)
-        if not acyl_simile:
-            return 'others'
-        return ','.join(acyl_simile)
-
-    df['Acyl SMILES'] = df.apply(determine_acyl_simile, axis=1)
-
-    data_a = {
-        'A number': ['A1', 'A2', 'A3', 'A4', 'A5', 'A6', 'A7', 'A8', 'A9', 'A10', 'A11'],
-        'A Struc': [
-            '1,2-en-3-one', '1,2-dihydro-3-one', '1,2-en-3-ol', '1,2-dihydro-3-ol', '1,10-en-3-one',
-            '1-alkyl-3-one', '1-alkyl-2-ol-3-one', '1-alkyl-3-ol', '1-alkyl-2-ol-3-ol',
-            '3,4-seco ring', 'bicyclo [2.2.1] heptane ring'
-        ]
+    # Acyl part scoring
+    acyl_part = row.get('Acyl part', '')
+    loss_score_map = {
+        'acyl': 'C2 loss_score',
+        'benzoyl': 'C7 loss_score',
+        'cinnamoyl': 'C9 loss_score',
+        'coumaroyl': 'C9 loss_score',
+        'nonanoyl': 'C9 loss_score',
+        'feruloyl': 'C10 loss_score',
+        'decanoyl': 'C10 loss_score',
+        'undecanoyl': 'C11 loss_score',
     }
-    data_b = {
-        'B number': ['B1', 'B2', 'B3', 'B4', 'B5', 'B6', 'B7', 'B8'],
-        'B Struc': [
-            '6,7-epoxy', '6,7-diol', '6,7-ene',
-            '5-dehydro-6,7-epoxy', '5-dehydro-6,7-diol', '5-dehydro-6,7-ene',
-            '4,7-epoxy', '4,6-epoxy'
-        ]
-    }
-    data_c = {
-        'C number': ['C1', 'C2', 'C3', 'C4', 'C5', 'C6'],
-        'C Struc': [
-            '9,13,14-orthoester', '9,13,14-orthoester', '9,13,14-triol', '9,13,14-triol',
-            '9,13,14-orthoester and 18-ol', '9,13,14-orthoester and 18-ol'
-        ],
-        'C-12Struc': [
-            'no C-12', 'with C-12', 'no C-12', 'with C-12', 'no C-12', 'with C-12'
-        ]
-    }
-    data_m = {
-        'M number': ['M1', 'M2', 'M3', 'M4', 'M5', 'M6', 'M7', 'M8', 'M9'],
-        'M Struc': [
-            'C9 ring with no substituents', 'C10 ring with no substituents',
-            'C10 ring with one substituents', 'C10 ring with two substituents',
-            'C10 ring with three substituents', 'C10 ring with four substituents',
-            'C14 ring with an olenfinic',
-            'C16 ring with an olenfinic', 'C16 ring with one substituents'
-        ]
-    }
+    if any(keyword in acyl_part for keyword in loss_score_map):
+        score_cols.extend(['Acyl A ion_score', 'Acyl B ion_score'])
 
-    df_a = pd.DataFrame(data_a)
-    df_b = pd.DataFrame(data_b)
-    df_c = pd.DataFrame(data_c)
-    df_m = pd.DataFrame(data_m)
+    for keyword, loss_col in loss_score_map.items():
+        if keyword in acyl_part:
+            score_cols.append(loss_col)
 
-    def map_a_number(row):
-        match = df_a[df_a['A Struc'] == row['A part']]
-        if not match.empty:
-            return match['A number'].values[0]
-        return 'others'
-    df['A number'] = df.apply(map_a_number, axis=1)
+    return score_cols
 
-    def map_b_number(row):
-        match = df_b[df_b['B Struc'] == row['B part']]
-        if not match.empty:
-            return match['B number'].values[0]
-        return 'others'
-    df['B number'] = df.apply(map_b_number, axis=1)
+# --- Compute total score by summing relevant ion/loss intensities ---
+def precise_total_score(row):
+    score_cols = get_scores_by_parts(row)
+    total = 0
+    for col in score_cols:
+        if not isinstance(col, str):
+            continue
+        val = pd.to_numeric(row.get(col, 0), errors='coerce')
+        if pd.notna(val):
+            total += val
+    return total
 
-    def map_c_number(row):
-        if row['type'] == 'D':
-            match = df_c[(df_c['C Struc'] == row['C part']) & (df_c['C-12Struc'] == row['C-12'])]
-            if not match.empty:
-                return match['C number'].values[0]
-        elif row['type'] == 'MD':
-            match = df_c[df_c['C Struc'] == row['C part']]
-            if not match.empty:
-                return match['C number'].values[0]
-        return 'others'
-    df['C number'] = df.apply(map_c_number, axis=1)
+def _calc_formula(smiles:str)->str:
+    if not smiles: return ""
+    m=Chem.MolFromSmiles(smiles)
+    return rdMolDescriptors.CalcMolFormula(m) if m else ""
 
-    def map_m_number(row):
-        match = df_m[df_m['M Struc'] == row['M part']]
-        if not match.empty:
-            return match['M number'].values[0]
-        return 'others'
-    df['M number'] = df.apply(map_m_number, axis=1)
+def _calc_mw(smiles:str)->float:
+    if not smiles: return 0.0
+    m=Chem.MolFromSmiles(smiles)
+    return round(MolWt(m),4) if m else 0.0
 
-    def find_skeleton_smiles(row, db):
-        match = pd.DataFrame()
-        if row['type'] == 'D':
-            match = db[
-                (db['A parts'] == row['A number']) &
-                (db['B parts'] == row['B number']) &
-                (db['C parts'] == row['C number'])
-                ]
-        elif row['type'] == 'MD':
-            match = db[
-                (db['A parts'] == row['A number']) &
-                (db['B parts'] == row['B number']) &
-                (db['C parts'] == row['C number']) &
-                (db['M parts'] == row['M number'])
-                ]
-        if not match.empty:
-            return match['New SMILES'].values[0]
-        return 'others'
+# ------ Mapping tables ------
+df_a = pd.DataFrame({
+    "A number":["A1","A2","A3","A4","A5","A6","A7","A8","A9","A10","A11"],
+    "A Struc":["1,2-en-3-one","1,2-dihydro-3-one","1,2-en-3-ol","1,2-dihydro-3-ol",
+               "1,10-en-3-one","1-alkyl-3-one","1-alkyl-2-ol-3-one","1-alkyl-3-ol",
+               "1-alkyl-2-ol-3-ol","3,4-seco","bicyclo [2.2.1] heptane"]
+})
+df_b = pd.DataFrame({
+    "B number":["B1","B2","B3","B4","B5","B6","B7","B8"],
+    "B Struc":["5-ol-6,7-epoxy","5-ol-6,7-diol","5-ol-6,7-ene",
+               "5-dehydro-6,7-epoxy","5-dehydro-6,7-diol","5-dehydro-6,7-ene",
+               "5-ol-4,7-epoxy","5-ol-4,6-epoxy"]
+})
+df_c = pd.DataFrame({
+    "C number":["C1","C2","C3","C4","C5","C6"],
+    "C Struc":["9,13,14-orthoester","9,13,14-orthoester","9,13,14-triol",
+               "9,13,14-triol","9,13,14-orthoester","9,13,14-orthoester"],
+    "C-12Struc":["no C-12","with C-12","no C-12","with C-12","no C-12","with C-12"],
+    "C-18Struc":["no C-18","no C-18","no C-18","no C-18","with C-18","with C-18"]
+})
+df_m = pd.DataFrame({
+    "M number":["M1","M2","M3","M4","M5","M6","M7","M8","M9"],
+    "M Struc":[["C9 ring with no substituents"],["C10 ring with no substituents"],
+               ["C10 ring with one substituents"],["C10 ring with two substituents","C10 ring with one substituents and a hydroxyl group"],
+               ["C10 ring with three substituents","C10 ring with two substituents and a hydroxyl group"],
+               ["C10 ring with four substituents","C10 ring with three substituents and a hydroxyl group"],
+               ["C14 ring with an olenfinic"],["C16 ring with an olenfinic"],["C16 ring with one substituents"]]
+})
 
-    df['A number'] = df.apply(map_a_number, axis=1)
-    df['B number'] = df.apply(map_b_number, axis=1)
-    df['C number'] = df.apply(map_c_number, axis=1)
-    df['M number'] = df.apply(map_m_number, axis=1)
+def map_a_number(row):
+    s = str(row['A part']).strip()
+    m = df_a[df_a['A Struc'].str.strip() == s]
+    return m['A number'].iat[0] if not m.empty else 'none'
 
-    df['Skeleton SMILES'] = df.apply(find_skeleton_smiles, axis=1, db=skeleton_db)
+def map_b_number(row):
+    s = str(row['B part']).strip()
+    m = df_b[df_b['B Struc'].str.strip() == s]
+    return m['B number'].iat[0] if not m.empty else 'none'
 
-    insert_index = df.columns.get_loc('Acyl part') + 1
-    for col in ['A number', 'B number', 'C number', 'M number', 'Acyl Number', 'Acyl SMILES', 'Skeleton SMILES']:
-        cols = df.columns.tolist()
-        cols.insert(insert_index, cols.pop(cols.index(col)))
-        df = df[cols]
-        insert_index += 1
+def map_c_number(row):
+    s = str(row['C part']).strip()
+    c12 = str(row['C-12']).strip()
+    c18 = str(row['C-18']).strip()
+    m = df_c[
+        (df_c['C Struc'].str.strip()   == s) &
+        (df_c['C-12Struc'].str.strip() == c12) &
+        (df_c['C-18Struc'].str.strip() == c18)
+    ]
+    return m['C number'].iat[0] if not m.empty else 'none'
 
-    df.to_csv(output_path_csv, index=False)
-    print(f"Annotation process complete. Data saved to {output_path_csv}")
+def map_m_number(row):
+    s = str(row['M part']).strip()
+    m = df_m[df_m['M Struc'].apply(lambda lst: s in lst)]
+    return m['M number'].iat[0] if not m.empty else 'none'
 
+def _read_csv_with_fallback(path):
+    raw = open(path, 'rb').read(4096)
+    guess = chardet.detect(raw)['encoding'] or 'utf-8'
+    for enc in [guess, 'utf-8', 'latin-1']:
+        try:
+            return pd.read_csv(path, encoding=enc)
+        except UnicodeDecodeError:
+            continue
+    return pd.read_csv(path, encoding='utf-8', errors='ignore')
+
+def annotation_process_data(query_csv, acyl_csv, pseudo_db, output_csv):
+    df      = _read_csv_with_fallback(query_csv)
+    acyl_df = _read_csv_with_fallback(acyl_csv)
+
+    df["IHD"]=df.apply(determine_ihd,axis=1)
+    df["A part"]=df.apply(determine_a_parts,axis=1)
+    df["B part"]=df.apply(lambda r:determine_b_parts(r,df),axis=1)
+    df["C part"]=determine_c_parts(df)
+    df["C-12"]=df.apply(determine_c12,axis=1)
+    df["C-18"]=df.apply(lambda r:determine_c18(r,df),axis=1)
+    df["olefinic position"]=df.apply(determine_olefinic_part,axis=1)
+
+    expanded=[]
+    for _,r in df.iterrows():
+        for m in determine_m_parts(r):
+            rr=r.copy(); rr["M part"]=m
+            expanded.append(rr)
+    df_exp=pd.DataFrame(expanded)
+
+    sub_rows=[]
+    for _,r in df_exp.iterrows():
+        sub_rows.extend(determine_substitution(r))
+    df_exp=pd.DataFrame(sub_rows)
+
+    df_exp["Acyl part"]=df_exp.apply(lambda r:determine_acyl_parts(r,acyl_df),axis=1)
+    df_exp["Acyl part"]=df_exp.apply(lambda r:refine_acyl_parts_by_olefinic(r,acyl_df),axis=1)
+    df_exp["Correct Acyl part"]=df_exp.apply(lambda r:determine_select_acyl(r,acyl_df),axis=1)
+    df_exp["Correct Acyl part"]=df_exp.apply(lambda r:double_check_acyl_parts(r,acyl_df),axis=1)
+
+    df_exp["A_id"] = df_exp.apply(map_a_number, axis=1)
+    df_exp["B_id"] = df_exp.apply(map_b_number, axis=1)
+    df_exp["C_id"] = df_exp.apply(map_c_number, axis=1)
+    df_exp["M_id"] = df_exp.apply(map_m_number, axis=1)
+
+    r_map={}
+    for _,r in acyl_df.iterrows():
+        for ident in re.split(r"[,/]",str(r["Identification"])):
+            if ident.strip(): r_map[ident.strip()]=r.get("R parts","")
+    r_series=df_exp["Correct Acyl part"].apply(lambda s:[r_map.get(i,"none") for i in str(s).split(",")])
+    maxr=r_series.map(len).max()
+    for i in range(maxr):
+        df_exp[f"R{i+1}_id"]=r_series.map(lambda lst: lst[i] if len(lst)>i else "none")
+
+    df_exp["Total Score"]=df_exp.apply(precise_total_score,axis=1)
+    df_exp=df_exp.sort_values("Total Score",ascending=False)
+    key_cols=["A part","B part","C part","C-12","C-18","M part","Sub Carbon","row ID"]
+    df_exp=df_exp.drop_duplicates(subset=key_cols)
+
+    df_exp=annotate_df_with_db(df_exp,pseudo_db)
+    df_exp=add_aglycone_type(df_exp)
+    df_exp["Annotation Formula"]=df_exp["Annotation SMILES"].apply(_calc_formula)
+    df_exp["Annotation MW"]=df_exp["Annotation SMILES"].apply(_calc_mw)
+
+    df_exp["TopK_num"]=df_exp.groupby("row ID")["Total Score"].rank(method="dense",ascending=False).astype(int)
+    df_exp["Top K"]=df_exp["TopK_num"].map(lambda x:f"Top{x}")
+    df_exp["confidence score"]=df_exp.groupby("row ID")["Total Score"].transform(lambda s:(s/s.max()).round(3))
+
+    df_exp.to_csv(output_csv,index=False)
+    base,ext=os.path.splitext(output_csv)
+    top1=f"{base}_top1{ext}"
+    df_exp[df_exp["Top K"]=="Top1"].drop_duplicates().to_csv(top1,index=False)
+    zip_path=f"{base}.zip"
+    with zipfile.ZipFile(zip_path,"w") as z:
+        z.write(output_csv,os.path.basename(output_csv))
+        z.write(top1,os.path.basename(top1))
+    return zip_path
 
 """ Tab 8 related Functions """
 @app.callback(
@@ -3877,7 +4410,6 @@ def annotation_process_data(path_csv, acyl_path_csv, skeleton_db_path_csv, outpu
 def update_visualization_query_csv_file_path(csv_contents, csv_filenames):
     if csv_contents and csv_filenames:
         print(f"Received CSV filenames: {csv_filenames}")
-        # Save the CSV files to the specified path
         csv_paths = [save_tab8_file(name, content) for name, content in zip(csv_filenames, csv_contents)]
         print(f"CSV paths saved: {csv_paths}")
         csv_path_text = f"Uploaded CSV files: {', '.join(csv_filenames)}"
@@ -3886,145 +4418,316 @@ def update_visualization_query_csv_file_path(csv_contents, csv_filenames):
         csv_path_text = "No CSV file uploaded"
     return csv_path_text
 
-
 @app.callback(
     Output('scatter-plot', 'figure'),
     Input('run-visualization', 'n_clicks'),
-    State('visualization-query-upload-csv', 'filename')
+    State('visualization-query-upload-csv', 'filename'),
+    Input('scatter-plot', 'clickData')
 )
-def generate_scatter_plot(n_clicks, csv_filenames):
+def generate_scatter_plot(n_clicks, csv_filenames, clickData):
     if n_clicks == 0 or not csv_filenames:
-        print("Scatter plot generation not triggered or no CSV file provided")
         return {}
 
     file_path = os.path.join(UPLOAD_DIR, 'tab_8_uploads', csv_filenames[0])
-    print(f"Reading file for scatter plot: {file_path}")
-
     df = pd.read_csv(file_path)
 
-    # Reshape the DataFrame to a long format for plotting
+    if 'index' not in df.columns:
+        unique_row_ids = df["row ID"].dropna().unique()
+        row_id_to_index = {rid: idx + 1 for idx, rid in enumerate(sorted(unique_row_ids))}
+        df["index"] = df["row ID"].map(row_id_to_index)
+
+    peak_area_cols = [col for col in df.columns if col.endswith("Peak area")]
+
     long_df = df.melt(
-        id_vars=[
-            'index', 'row ID', 'row m/z', 'elemental composition',
-            'adduct ion', 'row retention time',
-            'Skeleton SMILES', 'Acyl SMILES', 'identification'
-        ],
-        value_vars=df.columns.difference([
-            'index', 'row m/z', 'elemental composition', 'adduct ion',
-            'row retention time', 'Skeleton SMILES',
-            'Acyl SMILES', 'identification'
-        ]),
-        var_name='Plant Sample',
-        value_name='Concentration'
+        id_vars=["index", "row ID", "row m/z", "row retention time", "elemental composition", "adduct ion", "identification"],
+        value_vars=peak_area_cols,
+        var_name="Plant Sample",
+        value_name="Concentration"
     )
 
-    long_df['Concentration'] = pd.to_numeric(long_df['Concentration'], errors='coerce')
-    long_df = long_df[long_df['Concentration'] > 0]
+    long_df["Concentration"] = pd.to_numeric(long_df["Concentration"], errors="coerce")
+    long_df = long_df[long_df["Concentration"] > 0]
 
-    print(f"Data filtered for visualization: {len(long_df)} rows")
+    def base_color(ident):
+        return "possibly undescribed" if ident == "possibly undescribed" else "possibly known"
 
-    # Define color mapping based on 'identification'
-    color_map = {'possibly undescribed': 'red', 'possibly known': 'grey'}
-    long_df['Color'] = long_df['identification'].apply(
-        lambda x: 'possibly undescribed' if x == 'possibly undescribed' else 'possibly known'
-    )
+    long_df["Color"] = long_df["identification"].map(base_color)
+
+    if clickData:
+        selected_index = clickData["points"][0]["x"]
+        selected_sample = clickData["points"][0]["y"]
+        mask = (long_df["index"] == selected_index) & (long_df["Plant Sample"] == selected_sample)
+        long_df.loc[mask, "Color"] = "highlight"
+
+    color_map = {
+        "possibly undescribed": "red",
+        "possibly known": "grey",
+        "highlight": "yellow"
+    }
 
     fig = px.scatter_3d(
         long_df,
-        x='index',
-        y='Plant Sample',
-        z='row retention time',
-        size='Concentration',
-
-        size_max=40,
-        color='Color',
+        x="index",
+        y="Plant Sample",
+        z="row retention time",
+        size="Concentration",
+        color="Color",
         color_discrete_map=color_map,
         hover_data={
-            'row m/z': True,
-            'elemental composition': True,
-            'adduct ion': True,
-            'row retention time': True
-        }
+            "row ID": True,
+            "row m/z": True,
+            "row retention time": True,
+            "elemental composition": True,
+            "adduct ion": True
+        },
+        size_max=40
     )
+
     fig.update_layout(
         scene=dict(
-            xaxis=dict(
-                title=dict(text="Peak Number",
-                           font=dict(size=14))
-            ),
-            yaxis=dict(
-                title=dict(text="\n\n\n\nPlant Sample",
-                           font=dict(size=14))
-            ),
-            zaxis=dict(
-                title=dict(text="Retention Time (min)",
-                           font=dict(size=14))
-            )
-        )
+            xaxis_title="Peak Index",
+            yaxis_title="Plant Sample",
+            zaxis_title="Retention Time (min)"
+        ),
+        margin=dict(l=0, r=0, b=0, t=30)
     )
 
     return fig
 
-
 @app.callback(
-    [Output('skeleton-image', 'src'),
-     Output('acyl-image-1', 'src'),
-     Output('acyl-image-2', 'src')],
-    [Input('scatter-plot', 'clickData')],
-    State('visualization-query-upload-csv', 'filename')
+    Output('filtered-table-container', 'children'),
+    [Input('scatter-plot', 'clickData'),
+     Input('visualization-query-upload-csv', 'filename')]
 )
-def update_images(clickData, csv_filenames):
-    if not clickData or not csv_filenames:
-        print("No click data or no CSV filenames provided")
-        return '', '', ''
+def update_filtered_table(clickData, csv_filenames):
+    if not csv_filenames:
+        return html.Div("No CSV uploaded.")
 
     file_path = os.path.join(UPLOAD_DIR, 'tab_8_uploads', csv_filenames[0])
-    print(f"Reading file for image update: {file_path}")
-
     df = pd.read_csv(file_path)
 
-    point = clickData['points'][0]
-    compound_number = point['x']
-    plant_sample = str(point['y'])
+    if 'index' not in df.columns:
+        unique_row_ids = df['row ID'].dropna().unique()
+        row_id_to_index = {rid: idx + 1 for idx, rid in enumerate(sorted(unique_row_ids))}
+        df['index'] = df['row ID'].map(row_id_to_index)
 
-    print(f"Selected compound_number: {compound_number}, plant_sample: {plant_sample}")
-    print("Columns in df:", df.columns)
+    if clickData:
+        selected_index = clickData['points'][0]['x']
+        df = df[df['index'] == selected_index]
 
-    matching_columns = [col for col in df.columns if plant_sample in col]
-    if not matching_columns:
-        print(f"Error: No matching column found for plant_sample value '{plant_sample}' in DataFrame columns.")
-        return '', '', ''
+    columns_to_show = [
+        "row ID", "row m/z", "row retention time", "type", "elemental composition", "identification",
+        "same composition", "adduct ion", "same peak",
+        "A part", "B part", "C part", "C-12", "C-18", "M part",
+        "Correct Acyl part", "Sub No.", "Sub_An", "Aglycone Type",
+        "Top K", "confidence score"
+    ]
+    available_columns = [col for col in columns_to_show if col in df.columns]
 
-    sample_column = matching_columns[0]
-    print(f"Using column '{sample_column}' for plant sample '{plant_sample}'.")
-
-    try:
-        compound_number = float(compound_number)
-    except ValueError:
-        print(f"Warning: compound_number '{compound_number}' could not be converted to float.")
-
-    filtered_df = df[(df['index'] == compound_number) & (df[sample_column] > 0)]
-    if filtered_df.empty:
-        print(f"No matching data found for compound_number: {compound_number} and plant_sample column: {sample_column}")
-        return '', '', ''
-
-    row = filtered_df.iloc[0]
-    skeleton_smiles = row.get('Skeleton SMILES', '')
-    acyl_smiles = row.get('Acyl SMILES', '')
-
-    print(f"Skeleton SMILES: {skeleton_smiles}, Acyl SMILES: {acyl_smiles}")
-
-    skeleton_img = smiles_to_image(skeleton_smiles) if skeleton_smiles and skeleton_smiles != 'others' else ''
-    acyl_img_1, acyl_img_2 = '', ''
-    if acyl_smiles and acyl_smiles != 'others':
-        acyl_parts = acyl_smiles.split(',')
-        acyl_img_1 = smiles_to_image(acyl_parts[0].strip()) if len(acyl_parts) > 0 else ''
-        acyl_img_2 = smiles_to_image(acyl_parts[1].strip()) if len(acyl_parts) > 1 else ''
-
-    return skeleton_img, acyl_img_1, acyl_img_2
+    return dash_table.DataTable(
+        data=df[available_columns].to_dict("records"),
+        columns=[{"name": col, "id": col} for col in available_columns],
+        style_table={
+            'overflowX': 'auto',
+            'overflowY': 'auto',
+            'maxHeight': '500px',
+            'border': '1px solid #ccc'
+        },
+        style_cell={
+            'minWidth': '100px',
+            'maxWidth': '200px',
+            'whiteSpace': 'normal',
+            'textAlign': 'left',
+            'fontFamily': 'Arial',
+            'fontSize': '14px'
+        },
+        page_size=20,
+        filter_action="native",
+        sort_action="native",
+        style_header={
+            'backgroundColor': '#f2f2f2',
+            'fontWeight': 'bold'
+        }
+    )
 
 
-def smiles_to_image(smiles, size=(200, 200)):
+@app.callback(
+    [Output('structure-gallery', 'children'),
+     Output('structure-modal-container', 'children')],
+    Input('scatter-plot', 'clickData'),
+    State('visualization-query-upload-csv', 'filename')
+)
+def update_structure_gallery(clickData, csv_filenames):
+    if not csv_filenames:
+        return html.Div("No structure to display."), []
+
+    if not clickData:
+        return html.Div("Click on a data point to view annotated structures."), []
+
+    file_path = os.path.join(UPLOAD_DIR, 'tab_8_uploads', csv_filenames[0])
+    df = pd.read_csv(file_path)
+
+    if 'index' not in df.columns:
+        unique_row_ids = df['row ID'].dropna().unique()
+        row_id_to_index = {rid: idx + 1 for idx, rid in enumerate(sorted(unique_row_ids))}
+        df['index'] = df['row ID'].map(row_id_to_index)
+
+    selected_index = clickData["points"][0]["x"]
+    filtered_df = df[df["index"] == selected_index]
+    filtered_df = filtered_df[filtered_df["Annotation SMILES"].notna()]
+
+    cards = []
+    modals = []
+
+    for i, row in filtered_df.iterrows():
+        smiles = row["Annotation SMILES"]
+        annotation_id = row.get("Annotation ID", "N/A")
+        formula = row.get("Annotation Formula", "N/A")
+        mw = row.get("Annotation MW", "N/A")
+
+        # 处理 confidence score 保留三位小数
+        score_raw = row.get("confidence score")
+        try:
+            confidence = f"{float(score_raw):.3f}"
+        except (ValueError, TypeError):
+            confidence = "N/A"
+
+        mol_img = smiles_to_image(smiles)
+        if not mol_img:
+            continue
+
+        # 卡片区域
+        cards.append(html.Div([
+            html.Div([
+                html.Div(f"{annotation_id}", style={"fontWeight": "bold", "fontSize": "13px"}),
+                html.Div(f"{formula} | MW={mw}", style={"fontSize": "12px"}),
+                html.Div(f"Confidence: {confidence}", style={"fontSize": "12px", "color": "#444"})
+            ], style={"textAlign": "center", "marginBottom": "8px"}),
+
+            html.Img(
+                src=mol_img,
+                id={"type": "img", "index": i},
+                n_clicks=0,
+                style={
+                    "maxWidth": "200px", "height": "200px",
+                    "display": "block", "margin": "auto",
+                    "cursor": "pointer"
+                }
+            )
+        ], style={
+            "border": "1px solid #ccc",
+            "borderRadius": "8px",
+            "padding": "10px",
+            "width": "220px",
+            "backgroundColor": "#ffffff",
+            "boxShadow": "0 2px 4px rgba(0,0,0,0.1)"
+        }))
+
+        # Modal 放大图
+        modals.append(
+            dbc.Modal([
+                dbc.ModalHeader(f"{annotation_id} | {formula} | MW={mw}"),
+                dbc.ModalBody(html.Img(src=mol_img, style={"width": "100%"})),
+            ],
+                id={"type": "modal", "index": i},
+                is_open=False,
+                size="xl")
+        )
+
+    return cards, modals
+
+@app.callback(
+    Output({'type': 'modal', 'index': MATCH}, 'is_open'),
+    Input({'type': 'img', 'index': MATCH}, 'n_clicks'),
+    State({'type': 'modal', 'index': MATCH}, 'is_open')
+)
+def toggle_modal(n_clicks, is_open):
+    if n_clicks:
+        return not is_open
+    return is_open
+
+@app.callback(
+    Output("summary-bar-count", "children"),
+    Output("summary-bar-area", "children"),
+    Input('run-visualization', 'n_clicks'),
+    State('visualization-query-upload-csv', 'filename')
+)
+def update_summary_charts(n_clicks, csv_filenames):
+    if not csv_filenames:
+        return None, None
+    file_path = os.path.join(UPLOAD_DIR, 'tab_8_uploads', csv_filenames[0])
+    df = pd.read_csv(file_path)
+
+    if "index" not in df.columns:
+        unique_row_ids = df["row ID"].dropna().unique()
+        df["index"] = df["row ID"].map({rid: idx + 1 for idx, rid in enumerate(sorted(unique_row_ids))})
+
+    count_fig, area_fig = generate_summary_bar_charts_plotly(df)
+    return count_fig, area_fig
+
+def generate_summary_bar_charts_plotly(df):
+    peak_cols = [c for c in df.columns if c.endswith("Peak area")]
+    if not peak_cols:
+        return None, None
+
+    df_long = df.melt(
+        id_vars=["index", "identification"],
+        value_vars=peak_cols,
+        var_name="Sample",
+        value_name="Area"
+    )
+
+    df_long["Area"] = pd.to_numeric(df_long["Area"], errors="coerce")
+    df_long = df_long[df_long["Area"] > 0]
+    df_long["Sample"] = df_long["Sample"].str.replace(" Peak area", "", regex=False)
+    df_long["count"] = 1
+
+    count_summary = df_long.groupby(["Sample", "identification"])["count"].sum().reset_index()
+    count_summary = count_summary.pivot(index="Sample", columns="identification", values="count").fillna(0)
+
+    area_summary = df_long.groupby(["Sample", "identification"])["Area"].sum().reset_index()
+    area_summary = area_summary.pivot(index="Sample", columns="identification", values="Area").fillna(0)
+
+    for col in ["possibly undescribed", "possibly known"]:
+        if col not in count_summary.columns:
+            count_summary[col] = 0
+        if col not in area_summary.columns:
+            area_summary[col] = 0
+
+    samples = count_summary.index.tolist()
+    known_counts = count_summary.get("possibly known").values
+    new_counts = count_summary.get("possibly undescribed").values
+    known_areas = area_summary.get("possibly known").values
+    new_areas = area_summary.get("possibly undescribed").values
+
+    fig_count = go.Figure(data=[
+        go.Bar(name="possibly known", x=samples, y=known_counts, marker=dict(color='lightgray')),
+        go.Bar(name="possibly undescribed", x=samples, y=new_counts, marker=dict(color='red'))
+    ])
+    fig_count.update_layout(
+        barmode='stack',
+        title="Possibly Undescribed Compound Count",
+        yaxis_title="Count",
+        xaxis_tickangle=60,
+        height=400
+    )
+
+    fig_area = go.Figure(data=[
+        go.Bar(name="possibly known", x=samples, y=known_areas, marker=dict(color='lightgray')),
+        go.Bar(name="possibly undescribed", x=samples, y=new_areas, marker=dict(color='red'))
+    ])
+
+    fig_area.update_layout(
+        barmode='stack',
+        title="New Compound Area",
+        yaxis_title="Total Area",
+        xaxis_tickangle=60,
+        height=400
+    )
+
+    return dcc.Graph(figure=fig_count), dcc.Graph(figure=fig_area)
+
+def smiles_to_image(smiles, size=(250, 250)):
     mol = Chem.MolFromSmiles(smiles)
     if mol:
         img = Draw.MolToImage(mol, size=size)
@@ -4034,7 +4737,6 @@ def smiles_to_image(smiles, size=(200, 200)):
         return f"data:image/png;base64,{img_str}"
     else:
         return None
-
 
 def save_tab8_file(name, content, tab_folder='tab_8_uploads'):
     print(f"Saving file: {name} to folder: {tab_folder}")
@@ -4048,7 +4750,6 @@ def save_tab8_file(name, content, tab_folder='tab_8_uploads'):
         f.write(decoded)
     print(f"File saved at: {file_path}")
     return file_path
-
 
 # =========================
 #  Main Entrance
