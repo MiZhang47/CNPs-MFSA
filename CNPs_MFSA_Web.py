@@ -907,7 +907,9 @@ app.layout = html.Div([  # Main container for the application
 
                 html.Div([
                     html.Div(id="summary-bar-count", style={'marginBottom': '30px'}),
-                    html.Div(id="summary-bar-area")
+                    html.Div(id="summary-bar-area"),
+
+                    dcc.Interval(id='auto-trigger', interval=1000, n_intervals=0, max_intervals=1)
                 ]),
 
                 html.Div(id='filtered-table-container', style={'margin': '50px 50px 100px 50px'})
