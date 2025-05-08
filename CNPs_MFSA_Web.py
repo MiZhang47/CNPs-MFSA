@@ -4753,20 +4753,28 @@ def save_tab8_file(name, content, tab_folder='tab_8_uploads'):
     print(f"File saved at: {file_path}")
     return file_path
 
+USERNAME = 'cnps'
+PASSWORD = '123456'
+
 def requires_auth(f):
     @wraps(f)
     def decorated(*args, **kwargs):
         auth = request.authorization
-        if not auth or not (auth.username == 'CNPs' and auth.password == '123456'):
+        if not auth or not (auth.username == USERNAME and auth.password == PASSWORD):
             return Response(
                 'Could not verify your login.\n'
-                'You need to provide proper credentials.', 401,
+                'Please provide correct username and password.', 401,
                 {'WWW-Authenticate': 'Basic realm="Login Required"'}
             )
         return f(*args, **kwargs)
     return decorated
 
-app.server.before_request(requires_auth)
+server = app.server
+
+@server.before_request
+@requires_auth
+def before_request_func():
+    pass 
 
 # =========================
 #  Main Entrance
