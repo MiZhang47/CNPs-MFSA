@@ -7,6 +7,6 @@ services:
     startCommand: "gunicorn auth_wrapper:server"
     envVars:
       - key: DASH_AUTH_USERNAME
-        value: CNPs
+        value: cnps
       - key: DASH_AUTH_PASSWORD
         value: 123456
