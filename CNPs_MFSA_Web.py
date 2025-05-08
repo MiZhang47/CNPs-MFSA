@@ -4587,7 +4587,6 @@ def update_structure_gallery(clickData, csv_filenames):
         formula = row.get("Annotation Formula", "N/A")
         mw = row.get("Annotation MW", "N/A")
 
-        # 处理 confidence score 保留三位小数
         score_raw = row.get("confidence score")
         try:
             confidence = f"{float(score_raw):.3f}"
@@ -4598,7 +4597,6 @@ def update_structure_gallery(clickData, csv_filenames):
         if not mol_img:
             continue
 
-        # 卡片区域
         cards.append(html.Div([
             html.Div([
                 html.Div(f"{annotation_id}", style={"fontWeight": "bold", "fontSize": "13px"}),
@@ -4625,7 +4623,6 @@ def update_structure_gallery(clickData, csv_filenames):
             "boxShadow": "0 2px 4px rgba(0,0,0,0.1)"
         }))
 
-        # Modal 放大图
         modals.append(
             dbc.Modal([
                 dbc.ModalHeader(f"{annotation_id} | {formula} | MW={mw}"),
@@ -4666,6 +4663,30 @@ def update_summary_charts(n_clicks, csv_filenames):
 
     count_fig, area_fig = generate_summary_bar_charts_plotly(df)
     return count_fig, area_fig
+
+@app.callback(
+    Output("summary-bar-count", "children"),
+    Output("summary-bar-area", "children"),
+    Input("auto-trigger", "n_intervals"),
+    prevent_initial_call='initial_duplicate'
+)
+def load_default_if_available(n):
+    if not os.path.exists(DEFAULT_FILE_PATH):
+        return "No default data", ""
+
+    df = pd.read_csv(DEFAULT_FILE_PATH)
+
+    if "index" not in df.columns:
+        if "row ID" in df.columns:
+            unique_row_ids = df["row ID"].dropna().unique()
+            df["index"] = df["row ID"].map({rid: idx + 1 for idx, rid in enumerate(sorted(unique_row_ids))})
+        else:
+            df["index"] = df.index + 1
+
+    try:
+        return generate_summary_bar_charts_plotly(df)
+    except Exception as e:
+        return html.Div(f"❌ Error: {str(e)}"), ""
 
 def generate_summary_bar_charts_plotly(df):
     peak_cols = [c for c in df.columns if c.endswith("Peak area")]
