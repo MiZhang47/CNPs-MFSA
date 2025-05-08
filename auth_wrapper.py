@@ -1,8 +1,8 @@
 import os
 from flask import Flask, request, Response
-from CNPs_MFSA_Web import app  # 导入你的 Dash 应用
+from CNPs_MFSA_Web import app 
 
-USERNAME = os.getenv("DASH_AUTH_USERNAME", "CNPs")
+USERNAME = os.getenv("DASH_AUTH_USERNAME", "cnps")
 PASSWORD = os.getenv("DASH_AUTH_PASSWORD", "123456")
 
 def check_auth(user, pwd):
