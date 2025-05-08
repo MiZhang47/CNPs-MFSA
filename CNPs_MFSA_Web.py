@@ -39,6 +39,8 @@ import plotly.express as px  # Plotly Express for creating visualizations
 from flask import send_file  # Flask utility for sending files in response to HTTP requests
 from dash import dcc, dash_table
 import plotly.graph_objects as go
+from functools import wraps
+from flask import request, Response
 
 # =========================
 #  Initialize the Dash app
@@ -4751,8 +4753,23 @@ def save_tab8_file(name, content, tab_folder='tab_8_uploads'):
     print(f"File saved at: {file_path}")
     return file_path
 
+def requires_auth(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        auth = request.authorization
+        if not auth or not (auth.username == 'CNPs' and auth.password == '123456'):
+            return Response(
+                'Could not verify your login.\n'
+                'You need to provide proper credentials.', 401,
+                {'WWW-Authenticate': 'Basic realm="Login Required"'}
+            )
+        return f(*args, **kwargs)
+    return decorated
+
+app.server.before_request(requires_auth)
+
 # =========================
 #  Main Entrance
 # =========================
-if __name__ == '__main__':
-    app.run_server(debug=True)
+# if __name__ == '__main__':
+    # app.run_server(debug=True)
