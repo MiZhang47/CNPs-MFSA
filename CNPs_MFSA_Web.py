@@ -3734,7 +3734,7 @@ def count_element(formula: str, element: str) -> int:
 
 # --- Compute the Index of Hydrogen Deficiency (IHD) ---
 def determine_ihd(row) -> float:
-    comp = row.get("Elemental Composition","")
+    comp = row.get("elemental composition","")
     C = count_element(comp,"C")
     H = count_element(comp,"H")
     N = count_element(comp,"N")
