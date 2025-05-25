@@ -5381,9 +5381,8 @@ server = app.server
 def before_request_func():
     pass 
 
-# ✅ Add this block to expose the web app to Render
 if __name__ == '__main__':
-    app.run_server(debug=False, host='0.0.0.0', port=10000)
+    app.run(debug=False, host='0.0.0.0', port=10000)
 
 # =========================
 #  Main Entrance
