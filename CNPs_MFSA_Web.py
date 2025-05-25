@@ -43,6 +43,7 @@ import plotly.graph_objects as go  # Lower-level interface for complex Plotly vi
 from flask import send_file  # Flask function for sending downloadable files (e.g., ZIP/CSV)
 from dash.exceptions import PreventUpdate  # Used to cancel callback updates in Dash
 from functools import wraps
+from flask import request, Response
 
 # =========================
 #  Initialize the Dash app
