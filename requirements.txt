@@ -6,7 +6,6 @@ chardet
 # Chemical and MS data processing
 pyteomics
 matchms
-rdkit
 rdkit-pypi
 
 # Dash web framework and UI
