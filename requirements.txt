@@ -1,11 +1,17 @@
-dash
-plotly
-dash-bootstrap-components
+# Data processing
 pandas
 numpy
 chardet
-rdkit
+
+# Chemical and MS data processing
 pyteomics
 matchms
+rdkit
+rdkit-pypi
+
+# Dash web framework and UI
+dash
+dash-bootstrap-components
+plotly
 flask
 gunicorn
