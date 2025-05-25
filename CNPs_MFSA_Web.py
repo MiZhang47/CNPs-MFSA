@@ -3,44 +3,45 @@ Last updated: 2025/05
 Complex natural products (CNPs) Structure Annotation Tool constructed based on a modular fragmentation-based structural assembly (MFSA) strategy.
 """
 
-# =========================
+# ========================= 
 #  Import Python libraries
 # =========================
-# Import libraries for data processing and file handling
-import io  # Used for handling file streams
-import os  # Provides a way of using operating system-dependent functionalities
-import re  # Regular expression operations for string matching
-import chardet
-import itertools # Generates top-k for neutral loss tab
-import base64  # Encoding and decoding operations for binary data
-import zipfile  # Handles zip file creation and extraction
-import pandas as pd  # Data manipulation and analysis library
-import numpy as np  # Numerical computation library
-from typing import Optional, Tuple, List, Dict  # Type hinting for function signatures
-from itertools import combinations
-from collections import defaultdict
 
-# Import external libraries for chemical analysis and handling mass spectrometry data
-import sqlite3  # Provides SQLite database operations
-from pyteomics import mass, mgf  # Pyteomics library for handling mass spectrometry files and calculations
-from matchms import Spectrum, calculate_scores  # MatchMS library for handling mass spectrometry spectra and similarity calculations
-from matchms.similarity import CosineGreedy  # Cosine similarity scoring algorithm from MatchMS
-from rdkit import Chem  # RDKit library for chemical informatics and computational chemistry
-from rdkit.Chem import Draw  # RDKit's drawing utilities for visualizing molecular structures
-from rdkit.Chem import rdMolDescriptors
-from rdkit.Chem.Descriptors import MolWt
+# --- General-purpose libraries for file handling and data operations ---
+import io  # For handling in-memory file streams (e.g., uploads/downloads)
+import os  # Provides OS-dependent functionality like file paths
+import re  # Regular expression operations for pattern matching in strings
+import base64  # For encoding and decoding binary data (e.g., images, downloads)
+import zipfile  # For creating and extracting ZIP archives
+import chardet  # For detecting file encoding automatically
+import itertools  # For generating combinations/permutations (e.g., Top-K)
+from collections import defaultdict  # Dictionary with default values for grouping or counting
+from itertools import combinations  # Specifically for generating combinations
+from typing import Optional, Tuple, List, Dict  # Type hints for improved code clarity and checking
 
-# Import libraries for building and managing a web-based dashboard using Dash
-import dash  # Dash framework for building web applications
-from dash import dcc, html, dash_table  # Dash core components, HTML layout, and tables
-import dash_bootstrap_components as dbc  # Bootstrap components for Dash
-from dash.dependencies import Input, Output, State, MATCH, ALL  # Dash dependencies for interactive components
-import plotly.express as px  # Plotly Express for creating visualizations
-from flask import send_file  # Flask utility for sending files in response to HTTP requests
-from dash import dcc, dash_table
-import plotly.graph_objects as go
-from functools import wraps
-from flask import request, Response
+# --- Scientific computing and data analysis ---
+import pandas as pd  # Powerful library for data manipulation and analysis
+import numpy as np  # Library for numerical operations and array processing
+
+#  Chemical and MS data processing
+import sqlite3  # Lightweight SQL database engine used for local structure DBs
+from pyteomics import mass, mgf  # Pyteomics library for parsing and analyzing MS data (mass, MGF files)
+from matchms import Spectrum, calculate_scores  # matchms for working with MS spectra and scoring
+from matchms.similarity import CosineGreedy  # Cosine similarity scoring algorithm
+from rdkit import Chem  # RDKit core library for molecule objects and parsing
+from rdkit.Chem import Draw  # RDKit drawing utilities for molecule visualization
+from rdkit.Chem import rdMolDescriptors  # RDKit molecular descriptors module
+from rdkit.Chem.Descriptors import MolWt  # Function to compute molecular weight
+
+#  Dash web app and visualization
+import dash  # Dash framework for interactive web applications
+from dash import dcc, html, dash_table  # Dash core components, HTML layout elements, and tables
+import dash_bootstrap_components as dbc  # Bootstrap-based UI components for Dash
+from dash.dependencies import Input, Output, State, MATCH, ALL  # Dash callback dependencies for interactivity
+import plotly.express as px  # Plotly Express for simple and fast data visualization
+import plotly.graph_objects as go  # Lower-level interface for complex Plotly visualizations
+from flask import send_file  # Flask function for sending downloadable files (e.g., ZIP/CSV)
+from dash.exceptions import PreventUpdate  # Used to cancel callback updates in Dash
 
 # =========================
 #  Initialize the Dash app
@@ -62,12 +63,16 @@ global_results_neutralloss = {}  # Stores results from 'Neutral Loss Extract' pr
 global_results_featureion = {}  # Stores results from 'Feature Ion Extract' processing
 global_results_cosine = {}  # Stores results from 'Cosine Score Calculate' processing
 global_results_annotate = {}  # Stores results from 'Annotation' processing
+global_results_annotate_expand = {}  # Stores results from 'Annotation' processing
 global_results_visualization = {}  # Stores results from 'Visualization' processing
 
 # =========================
 #  Dash Layout
 # =========================
 app.layout = html.Div([  # Main container for the application
+
+    dcc.Store(id='annotation-rule-store', data=[]),
+
     # Add a description text at the top of all tabs
     html.Div([
         # Add the logo image on the left
@@ -93,7 +98,7 @@ app.layout = html.Div([  # Main container for the application
     }),
     dcc.Tabs([  # Create a set of tabs for different functionalities
         # Tab 1: Target Recognition
-        dcc.Tab(label='1. Target Recognize', children=[
+        dcc.Tab(label='Target Recognize', children=[
             html.Div([  # Container for the 'Target Recognize' tab
                 html.Div([  # Upload components for MGF and CSV files
                     html.Div([
@@ -191,7 +196,7 @@ app.layout = html.Div([  # Main container for the application
             }),
 
         # Tab 2: Composition Calculate
-        dcc.Tab(label='2. Composition Calculate', children=[
+        dcc.Tab(label='Composition Calculate', children=[
             html.Div([
                 # Two main sections: MS spectra upload and formula database upload
                 html.Div([
@@ -284,7 +289,7 @@ app.layout = html.Div([  # Main container for the application
 
         # Tab 3: Adduct Ion Calculate
         dcc.Tab(
-            label='3. Adduct Ion Calculate',
+            label='Adduct Ion Calculate',
             children=[
                 html.Div([
                     html.Div([
@@ -388,7 +393,7 @@ app.layout = html.Div([  # Main container for the application
             }),
 
         # Tab 4: Neutral Loss Extract
-        dcc.Tab(label='4. Neutral Loss Extract', children=[
+        dcc.Tab(label='Neutral Loss Labeling', children=[
             html.Div([
                 # Container for MGF, CSV, and database file uploads
                 html.Div([
@@ -507,7 +512,7 @@ app.layout = html.Div([  # Main container for the application
         }),
 
         # Tab 5: Feature Ion Extract
-        dcc.Tab(label='5. Feature Ion Extract', children=[
+        dcc.Tab(label='Feature Ion Labeling', children=[
             html.Div([  # Main container for 'Feature Ion Extract' tab
                 html.Div([  # Section for MGF and CSV file uploads
                     html.Div([
@@ -596,7 +601,7 @@ app.layout = html.Div([  # Main container for the application
         }),
 
         # Tab 6: Cosine Score Calculate
-        dcc.Tab(label='6. Cosine Score Calculate', children=[
+        dcc.Tab(label='Cosine Score Calculate', children=[
             html.Div([
                 # Container for query and standard MGF and CSV uploads
                 html.Div([
@@ -739,7 +744,7 @@ app.layout = html.Div([  # Main container for the application
         }),
 
         # Tab 7: Annotation
-        dcc.Tab(label='7. Annotation', children=[
+        dcc.Tab(label='Modules Annotation-Daphnane', children=[
             html.Div([
                 # Container for different file upload sections related to Annotation
                 html.Div([
@@ -843,8 +848,167 @@ app.layout = html.Div([  # Main container for the application
             'fontWeight': 'bold'
         }),
 
-        # Tab 8: Visualization
-        dcc.Tab(label='8. Visualization', children=[
+        # Tab 8: Annotation Expand
+        dcc.Tab(
+            label='Modules Annotation-Expand',
+            children=[
+                html.Div([
+                html.Div([
+                    html.Div([
+                        html.H4('Import Query CSV file (multiple files):', style={'fontFamily': 'Arial'}),
+                        dcc.Upload(
+                            id='annotation-ex-query-upload-csv',
+                            children=html.Div('Drop or Select CSV File'),
+                            style={
+                                'width': '90%', 'height': '50px', 'lineHeight': '50px',
+                                'borderWidth': '1px', 'borderStyle': 'dashed',
+                                'borderRadius': '5px', 'textAlign': 'center',
+                                'margin': '10px', 'fontFamily': 'Arial'
+                            },
+                            multiple=True
+                        ),
+                        html.Div(id='annotation-ex-query-csv-file-path',
+                                 style={'fontFamily': 'Arial', 'marginTop': '10px', 'color': '#007bff'})
+                    ], style={'width': '60%'}),
+
+                    html.Div([
+                        html.H4('Import pseudo-DB file:', style={'fontFamily': 'Arial'}),
+                        dcc.Upload(
+                            id='annotation-ex-pseudo-DB-upload-db',
+                            children=html.Div('Drop or Select DB File'),
+                            style={
+                                'width': '90%', 'height': '50px', 'lineHeight': '50px',
+                                'borderWidth': '1px', 'borderStyle': 'dashed',
+                                'borderRadius': '5px', 'textAlign': 'center',
+                                'margin': '10px', 'fontFamily': 'Arial'
+                            },
+                            multiple=False
+                        ),
+                        html.Div(id='annotation-ex-pseudo-DB-file-path',
+                                 style={'fontFamily': 'Arial', 'marginTop': '10px', 'color': '#007bff'})
+                    ], style={'width': '60%'})
+                ], style={'display': 'flex', 'justifyContent': 'space-between'}),
+
+                    html.Div(id='rule-setting-container', children=[
+                        html.H3('Module Annotation Rules Setting',
+                                style={'color': 'black', 'fontSize': '16pt', 'fontWeight': 'bold',
+                                       'fontFamily': 'Arial'}),
+                        html.Div(id='rule-container', children=[
+                            html.Div(id={'type': 'rule-block', 'index': 1}, children=[
+                                html.Div([
+                                    html.Label('Module Name 1:', style={'color': 'black', 'fontWeight': 'bold',
+                                                                        'fontFamily': 'Arial'}),
+                                    dcc.Input(id={'type': 'module-name', 'index': 1}, placeholder='eg. A parts',
+                                              style={'marginLeft': '10px'}),
+                                ], style={'marginBottom': '10px'}),
+
+                                html.Div([
+                                    html.Label('Adduct ion:', style={'color': 'black', 'fontWeight': 'bold',
+                                                                     'fontFamily': 'Arial'}),
+                                    dcc.Input(id={'type': 'adduct-ion', 'index': 1}, placeholder='eg. [M+H-H2O]-',
+                                              style={'marginLeft': '10px'}),
+                                ], style={'marginBottom': '10px'}),
+
+                                html.Div([
+                                    html.Label('Neutral loss 1:', style={'color': 'black', 'fontWeight': 'bold',
+                                                                         'fontFamily': 'Arial'}),
+                                    dcc.Input(id={'type': 'neutral-loss', 'index': 1},
+                                              placeholder='e.g. CxHyOz,...',
+                                              style={'marginLeft': '10px', 'width': '120px'}),
+                                    html.Label('Neutral loss score 1:',
+                                               style={'color': 'black', 'fontWeight': 'bold', 'marginLeft': '10px',
+                                                      'fontFamily': 'Arial'}),
+                                    dcc.Input(id={'type': 'neutral-loss-score', 'index': 1}, placeholder='e.g. 10',
+                                              type='number', style={'marginLeft': '10px', 'width': '80px',
+                                                                    'fontFamily': 'Arial'}),
+                                ], style={'marginBottom': '10px',
+                                          'fontFamily': 'Arial'}),
+
+                                html.Div([
+                                    html.Label('Feature ion 1:', style={'color': 'black', 'fontWeight': 'bold'}),
+                                    dcc.Input(id={'type': 'feature-ion', 'index': 1}, placeholder='e.g. CxHyOz,...',
+                                              style={'marginLeft': '10px', 'width': '120px'}),
+                                    html.Label('Feature ion score 1:',
+                                               style={'color': 'black', 'fontWeight': 'bold',
+                                                      'marginLeft': '10px'}),
+                                    dcc.Input(id={'type': 'feature-ion-score', 'index': 1}, placeholder='eg. 10',
+                                              type='number', style={'marginLeft': '10px', 'width': '80px'}),
+                                ], style={'marginBottom': '10px',
+                                          'fontFamily': 'Arial'}),
+
+                                html.Div([
+                                    html.Label('Select relationship between loss and ion:',
+                                               style={'color': 'black', 'fontWeight': 'bold'}),
+                                    dcc.Dropdown(id={'type': 'relation-loss-ion', 'index': 1},
+                                                 options=[{'label': 'AND', 'value': 'AND'},
+                                                          {'label': 'OR', 'value': 'OR'},
+                                                          {'label': 'None', 'value': 'None'}],
+                                                 placeholder='Select relation',
+                                                 style={'marginLeft': '10px', 'width': '120px'}),
+                                ], style={'marginBottom': '10px',
+                                          'fontFamily': 'Arial'}),
+
+                                html.Div([
+                                    html.Label('Output Module Substructure:',
+                                               style={'color': 'black', 'fontWeight': 'bold'}),
+                                    dcc.Input(id={'type': 'output-substructure', 'index': 1},
+                                              placeholder='e.g. A-seco',
+                                              style={'marginLeft': '10px'}),
+                                ], style={'marginBottom': '10px'}),
+                            ], style={'backgroundColor': '#F0F0F0', 'padding': '15px', 'borderRadius': '5px',
+                                      'fontFamily': 'Arial'})
+                        ]),
+
+                        html.Button('Add rules +', id='add-rule-button', n_clicks=0,
+                                    style={'backgroundColor': '#A9A9A9', 'color': 'white', 'border': 'none',
+                                           'padding': '10px 20px', 'marginTop': '10px', 'cursor': 'pointer'}),
+                    ], style={'width': '80%', 'padding': '10px', 'backgroundColor': '#FAFAFA',
+                              'borderRadius': '5px'})
+                ], style={'display': 'flex', 'flexDirection': 'column', 'gap': '20px', 'fontFamily': 'Arial'}),
+
+                html.Button('Run Annotation', id='run-annotation-ex', n_clicks=0,
+                            style={'marginTop': '20px', 'fontFamily': 'Arial', 'padding': '10px 20px',
+                                   'backgroundColor': '#007bff', 'color': 'white', 'border': 'none',
+                                   'cursor': 'pointer', 'fontSize': '16px'}),
+                html.A("Download All Results", id="annotation-ex-download-link",
+                       download="annotation_results.zip", href="",
+                       style={'fontFamily': 'Arial', 'marginLeft': '20px', 'fontSize': '16px', 'color': '#007bff'}),
+                html.Div(id='annotation-ex-output',
+                         style={'marginTop': '20px', 'fontFamily': 'Arial', 'color': '#007bff'}),
+                html.Div([
+                    html.Div([
+                        html.H4('Select file to view results:', style={'fontFamily': 'Arial', 'marginRight': '20px'}),
+                        dcc.Dropdown(
+                            id='annotation-ex-file-dropdown',
+                            options=[],
+                            placeholder='Select a file',
+                            style={'width': '200px', 'fontFamily': 'Arial'}
+                        )
+                    ], style={'display': 'flex', 'alignItems': 'center', 'fontFamily': 'Arial', 'marginTop': '20px'}),
+                    html.Div(id='annotation-ex-results-table', style={'marginTop': '20px', 'fontFamily': 'Arial'})
+                ])
+            ],
+            style={
+                'border': '2px solid #d6d6d6',
+                'backgroundColor': '#f1f1f1',
+                'padding': '10px',
+                'fontFamily': 'Arial',
+                'fontSize': '16px',
+                'fontWeight': 'bold'
+            },
+            selected_style={
+                'border': '2px solid #A9A9A9',
+                'backgroundColor': '#A9A9A9',
+                'color': 'white',
+                'padding': '10px',
+                'fontFamily': 'Arial',
+                'fontSize': '18px',
+                'fontWeight': 'bold'
+            }
+        ),
+
+        # Tab 9: Visualization
+        dcc.Tab(label='Visualization', children=[
             html.Div([
                 html.Div([
                     html.H4('Import Query CSV file (multiple files):', style={'fontFamily': 'Arial'}),
@@ -907,9 +1071,7 @@ app.layout = html.Div([  # Main container for the application
 
                 html.Div([
                     html.Div(id="summary-bar-count", style={'marginBottom': '30px'}),
-                    html.Div(id="summary-bar-area"),
-
-                    dcc.Interval(id='auto-trigger', interval=1000, n_intervals=0, max_intervals=1)
+                    html.Div(id="summary-bar-area")
                 ]),
 
                 html.Div(id='filtered-table-container', style={'margin': '50px 50px 100px 50px'})
@@ -1532,6 +1694,9 @@ def detect_recognize_spectra(filename: str, feature_formulas: list, min_mass: fl
 
             print(f"Processing spectrum with title: {spectrum['params'].get('title', 'Unknown')}, Max mass: {max_mass}")
 
+            if max_mass < 400 or max_mass > 1500:
+                continue
+
             # Filter product ions based on mass range
             product_ions = spectrum['m/z array']
             intensity = spectrum['intensity array']
@@ -1553,7 +1718,7 @@ def detect_recognize_spectra(filename: str, feature_formulas: list, min_mass: fl
             # Count hits based on the provided formulas and tolerance
             hits = 0
             for intensity_value, product_ion in zip(nor_intensity, product_ions):
-                if intensity_value > 0.05:
+                if intensity_value > 0.1:
                     for formula in feature_formulas:
                         mz_min, mz_max = recognize_mz_range(formula, charge, tolerance_ppm)
                         if mz_min <= product_ion <= mz_max:
@@ -1943,7 +2108,7 @@ tab3_typeII = {}
     State('adduct-upload-db', 'filename')
 )
 def update_input_db(input_db_content, input_db_filename):
-    global db_filenames, tab3_typeI, tab3_typeII
+    global db_filenames, tab3_typeI, tab3_typeII, tab3_rt_map
 
     if input_db_content and input_db_filename:
         content_type, content_string = input_db_content.split(',')
@@ -1952,29 +2117,33 @@ def update_input_db(input_db_content, input_db_filename):
         with open(file_path, 'wb') as f:
             f.write(decoded)
 
-        # read DataFrame
         db_filenames = pd.read_csv(file_path)
 
-        # After each database upload, reset and fill tab3_typeI / tab3_typeII
-        tab3_typeI = {}
+        tab3_typeI  = {}
         tab3_typeII = {}
+        tab3_rt_map = {}
 
-        # Assume the database CSV contains the following columns: ["Compound Name", "Type", "M", "M+NH3", "M+CH3NH2"]
-        for _, row in db_filenames.iterrows():
-            compound_name = row.get("Compound Name", "")
-            compound_type = row.get("Type", "")
-            m_formula = row.get("M", "")
-            m_nh3_formula = row.get("M+NH3", "")
-            m_ch3nh2_formula = row.get("M+CH3NH2", "")
+        for _, db_row in db_filenames.iterrows():
+            name = db_row.get("Compound Name", "")
+            ctype = db_row.get("Type", "")
+            raw_rt = db_row.get("Std-Rt", None)
+            try:
+                rt_val = float(raw_rt)
+            except (TypeError, ValueError):
+                rt_val = None
+            tab3_rt_map[name] = rt_val
 
-            if compound_type == "D":
-                tab3_typeI[compound_name] = [m_formula, m_nh3_formula, m_ch3nh2_formula]
-            elif compound_type == "MD":
-                tab3_typeII[compound_name] = [m_formula, m_nh3_formula, m_ch3nh2_formula]
+            m0 = db_row.get("M", "")
+            m1 = db_row.get("M+NH3", "")
+            m2 = db_row.get("M+CH3NH2", "")
+
+            if ctype == "D":
+                tab3_typeI[name] = [m0, m1, m2]
+            elif ctype == "MD":
+                tab3_typeII[name] = [m0, m1, m2]
 
         return f"Uploaded Database File: {input_db_filename}"
     return "No database file uploaded."
-
 
 @app.callback(
     Output('adduct-csv-file-path', 'children'),
@@ -2089,17 +2258,8 @@ def calculate_mz_range(formula: str, charge: int = 1, tolerance_ppm: float = 5.0
     # and the second is the upper bound (mz + tolerance).
     return mz - mz_tolerance, mz + mz_tolerance
 
-
 def identify_compound(row):
-    """
-    Parameters:
-    row (dict): A dictionary representing a row of data from mass spectrometry. It should include 'type' to indicate the
-                type of natural compounds (ex.'D' or 'MD') and 'row m/z' for the mass-to-charge ratio to be identified.
 
-    Returns:
-    tuple[str, str]: A tuple where the first element indicates if the compound is known or undescribed,
-                    and the second element lists the identified compounds or 'none' if no matches are found.
-    """
     if row.get('type') == 'D':
         known_compounds = tab3_typeI
     elif row.get('type') == 'MD':
@@ -2107,18 +2267,53 @@ def identify_compound(row):
     else:
         known_compounds = {}
 
-    identifications = []
-    for compound, formulas in known_compounds.items():
-        for formula in formulas:
-            mz_min, mz_max = calculate_mz_range(formula, charge=1, tolerance_ppm=5.0)
-            if mz_min <= row['row m/z'] <= mz_max:
-                identifications.append(compound)
+    mz_obs = row.get('row m/z')
+    rt_obs = row.get('row retention time')
 
-    if identifications:
-        return 'possibly known', ', '.join(set(identifications))
-    else:
+    identifications = []
+    for comp, formulas in known_compounds.items():
+        for fmt in formulas:
+            mz_min, mz_max = calculate_mz_range(fmt, charge=1, tolerance_ppm=5.0)
+            if mz_obs is not None and mz_min <= mz_obs <= mz_max:
+                identifications.append(comp)
+
+    if not identifications:
+        print("No m/z hits.")
         return 'possibly undescribed', 'none'
 
+    da_matches    = [c for c in identifications if 'DA' in c]
+    other_matches = [c for c in identifications if 'DA' not in c]
+
+    if da_matches:
+        hits_rt = []
+        for c in da_matches:
+            std_rt = tab3_rt_map.get(c)
+            if std_rt is not None:
+                rt_min, rt_max = std_rt - 0.3, std_rt + 0.3
+                hit = (rt_obs is not None and rt_min <= rt_obs <= rt_max)
+                print(f"[DA] {c}: Std-Rt window=[{rt_min:.2f},{rt_max:.2f}], obs_rt={rt_obs}, hit={hit}")
+            else:
+                print(f"[DA] {c}: Std-Rt=None, obs_rt={rt_obs}, treat as known")
+                hit = True
+
+            if hit:
+                hits_rt.append(c)
+
+        if hits_rt:
+            seen = list(dict.fromkeys(hits_rt))
+            return 'possibly known', ', '.join(seen)
+        else:
+            isomers = list(dict.fromkeys(f"{c} isomer" for c in da_matches))
+            return 'possibly undescribed', ', '.join(isomers)
+
+    if other_matches:
+        print("Non-DA matches:", other_matches)
+        seen = list(dict.fromkeys(other_matches))
+        return 'possibly known', ', '.join(seen)
+
+    # 6) 兜底
+    print("Fallback: no valid matches after DA check.")
+    return 'possibly undescribed', 'none'
 
 def calculate_formula_difference(formula1: str, formula2: str) -> dict:
     """
@@ -2171,6 +2366,8 @@ def h2o_nh3_ch3nh2(diff: dict) -> str:
         return "NH3"  # Return "NH3" if the difference matches an ammonia molecule.
     elif diff == {'C': 1, 'H': 5, 'O': 0, 'N': 1}:
         return "CH3NH2"  # Return "CH3NH2" if the difference matches an CH3NH2 molecule.
+    elif diff == {'C': 1, 'H': 0, 'O': 2, 'N': 0}:
+        return "CO2"  # Return "CH3NH2" if the difference matches an CH3NH2 molecule.
     # Return None if the elemental difference does not correspond to either H2O or NH3.
     return None
 
@@ -2214,12 +2411,18 @@ def add_annotations(df: pd.DataFrame) -> pd.DataFrame:
                 match_result = h2o_nh3_ch3nh2(diff)
 
                 if match_result == "H2O":
-
                     if (mass.Composition(df.at[indices[i], 'elemental composition']).get('O', 0)
                             < mass.Composition(df.at[indices[j], 'elemental composition']).get('O', 0)):
                         df.at[indices[i], 'adduct ion'] = '[M+H-H2O]+'
                     else:
                         df.at[indices[j], 'adduct ion'] = '[M+H-H2O]+'
+
+                elif match_result == "CO2":
+                    if (mass.Composition(df.at[indices[i], 'elemental composition']).get('O', 0)
+                            < mass.Composition(df.at[indices[j], 'elemental composition']).get('O', 0)):
+                        df.at[indices[i], 'adduct ion'] = '[M+H-CO2]+'
+                    else:
+                        df.at[indices[j], 'adduct ion'] = '[M+H-CO2]+'
 
                 elif match_result == "NH3":
                     if df.at[indices[i], 'row m/z'] > df.at[indices[j], 'row m/z']:
@@ -2263,7 +2466,7 @@ def compare_peaks_and_mark(df: pd.DataFrame) -> pd.DataFrame:
                     diff = calculate_formula_difference(formula1, formula2)
                     result = h2o_nh3_ch3nh2(diff)
                     # If the result is H2O or NH3, update the same_peak_dict
-                    if result in ["H2O", "NH3", "CH3NH2"]:
+                    if result in ["H2O", "NH3", "CH3NH2", "CO2"]:
                         if ids[i] in same_peak_dict:
                             same_peak_dict[ids[i]].add(group.at[ids[j], 'row ID'])
                         else:
@@ -3769,28 +3972,30 @@ def solve_2_7(remain: int) -> Optional[Tuple[int, int]]:
 # --- Solver: 2*x + 7*y + 4*z + 5*m = remain, minimize total parts, all vars ≤ 5 ---
 def solve_2_9_10_7_11(remain:int)->Optional[Tuple[int,int,int,int,int]]:
     best=None
-    for a in range(6):
-        for b in range(3):
-            for c in range(3):
-                for d in range(4):
-                    for e in range(3):
-                        if 2*a+9*b+10*c+7*d+11*e==remain:
-                            tot=a+b+c+d+e
-                            if best is None or tot<best[0]:
-                                best=(tot,a,b,c,d,e)
+    max_a, max_b, max_c, max_d, max_e = 3, 2, 2, 3, 2
+    for a in range(0, min(remain // 2, max_a) + 1):
+        for b in range(0, min(remain // 9, max_b) + 1):
+            for c in range(0, min(remain // 10, max_c) + 1):
+                for d in range(0, min(remain // 7, max_d) + 1):
+                    for e in range(0, min(remain // 11, max_e) + 1):
+                        if 2 * a + 9 * b + 10 * c + 7 * d + 11 * e == remain:
+                            total = a + b + c + d + e
+                            if best is None or total < best[0]:
+                                best = (total, a, b, c, d, e)
     return best[1:] if best else None
 
 def solve_2_7_4_5(remain:int)->List[Tuple[int,int,int,int]]:
     out=[]
-    for x in range(6):
-        for y in range(6):
-            for z in range(6):
-                if 2*x+7*y+4*z==remain:
-                    out.append((x,y,z,0))
-    for x in range(6):
-        for m in range(6):
-            if 2*x+5*m==remain:
-                out.append((x,0,0,m))
+    max_x, max_y, max_z, max_m = 4, 4, 3, 3
+    for x in range(0, min(remain // 2, max_x) + 1):
+        for y in range(0, min(remain // 7, max_y) + 1):
+            for z in range(0, min(remain // 4, max_z) + 1):
+                if 2 * x + 7 * y + 4 * z == remain:
+                    out.append((x, y, z, 0))
+    for x in range(0, min(remain // 2, max_x) + 1):
+        for m in range(0, min(remain // 5, max_m) + 1):
+            if 2 * x + 5 * m == remain:
+                out.append((x, 0, 0, m))
     return out
 
 # --- Determine number and type of substituent fragments ---
@@ -3922,13 +4127,20 @@ def determine_c_parts(df: pd.DataFrame) -> pd.Series:
 
 # ------ Part C-12 ------
 def determine_c12(row):
-    if row["type"]=="D":
-        if count_element(row["C17 ion"],"O")==2: return "no C-12"
-        return "with C-12"
-    elif row["type"]=="MD":
-        if count_element(row.get("C14 loss",""),"O")==2:
-            return "with C-12"
-    return "no C-12"
+    if row['type'] == 'D':
+        o_count = count_element(row['C17 ion'], 'O')
+        if o_count == 2:
+            return 'no C-12'
+        elif o_count == 3:
+            return 'with C-12'
+    if row['type'] == 'MD':
+        if count_element(row.get('C14 loss', ''), 'O') == 2:
+            c19_ion = row.get('C19 ion', '')
+            if c19_ion in ('C19H18O4', 'C19H18O3', 'C19H20O3'):
+                return 'with C-12'
+            else:
+                return 'no C-12'
+    return 'no C-12'
 
 # ------ Part C-18 ------
 def determine_c18(row,df):
@@ -3960,7 +4172,7 @@ def determine_m_parts(row):
     ion=row.get("C10 ion","")
     try: score=float(row.get("C10 ion_score",0))
     except: score=0
-    if ion=="C10H16O3": parts.append("C10 ring with one substituents and a hydroxyl group")
+    if ion=="C10H16O3": parts.append("C10 ring with one substituent and a hydroxyl group")
     elif ion=="C10H14O3": parts.append("C10 ring with two substituents and a hydroxyl group")
     elif ion=="C10H12O3" and score>0.015: parts.append("C10 ring with three substituents and a hydroxyl group")
     # loss-based
@@ -3976,7 +4188,7 @@ def determine_m_parts(row):
             if k=="C10":
                 if h==18 and o==2: parts.append("C10 ring with no substituents")
                 elif h==16 and o==2: parts.append("C10 ring with one substituent")
-                elif h==16 and o==3: parts.append("C10 ring with one substituents and a hydroxyl group")
+                elif h==16 and o==3: parts.append("C10 ring with one substituent and a hydroxyl group")
                 elif h==14 and o==2: parts.append("C10 ring with two substituents")
             elif k=="C9" and h==16: parts.append("C9 ring with no substituents")
             elif k=="C14" and o==2: parts.append("C14 ring with an olenfinic")
@@ -4028,67 +4240,151 @@ def refine_acyl_parts_by_olefinic(row,acyl_df):
         if ien and ox: rm.update(ox)
     return ",".join([e for e in ents if re.match(r"(.+?)(?:\(|$)",e).group(1) not in rm])
 
-def determine_select_acyl(row,acyl_df):
-    try: sub_no=int(row.get("Sub No.",0))
-    except: sub_no=0
-    if sub_no==0: return "none"
-    subs=[c.strip() for c in str(row.get("Sub Carbon","")).split(",") if c.strip().startswith("C")]
-    raw=[p.strip() for p in str(row.get("Acyl part","")).split(",") if p.strip()]
-    parsed=[(re.match(r"(.+?)\(([\d\.]+)\)",p).group(1),float(re.match(r".+?\(([\d\.]+)\)",p).group(1))) if "(" in p else (p,None) for p in raw]
-    corr={2:"acyl",4:"isobutyryl",5:"2-methylbutyryl",7:"benzoyl"}
-    def cands(parts):
-        out=[]
-        for name,score in parts:
-            sel=acyl_df[acyl_df["Identification"]==name]
-            if not sel.empty:
-                out.append((score or 0,name,count_element(sel.iloc[0]["Acyl Formula"],"C")))
-        return out
-    # two distinct
-    if sub_no==2 and len(subs)==2:
-        n1,n2=int(subs[0][1:]),int(subs[1][1:]); total=n1+n2
-        allc=cands(parsed)
-        pairs=[((s1,n1),(s2,n2)) for s1,n1,c1 in allc for s2,n2,c2 in allc if n1!=n2 and c1+c2==total]
-        if pairs:
-            best=max(pairs,key=lambda pr: pr[0][0]+pr[1][0])
-            return ",".join(dict.fromkeys([best[0][1],best[1][1]]))
-    # identical double
-    if sub_no==2 and len(subs)==1:
-        n=int(subs[0][1:]); total=2*n
-        allc=cands(parsed)
-        pairs=[((s1,n1),(s2,n2)) for (s1,n1,c1),(s2,n2,c2) in combinations(allc,2) if c1+c2==total]
-        if pairs:
-            best=max(pairs,key=lambda pr: pr[0][0]+pr[1][0])
-            return ",".join(dict.fromkeys([best[0][1],best[1][1]]))
-    # per-carbon
-    valid=[]
-    for sc in subs:
-        n=int(sc[1:]) if sc[1:].isdigit() else None
-        if n:
-            cands_i=[(score,name) for name,score in parsed for _,row in acyl_df[acyl_df["Identification"]==name].iterrows() if count_element(row["Acyl Formula"],"C")==n]
-            if cands_i:
-                valid.append(max(cands_i,key=lambda x:x[0])[1])
-            elif corr.get(n):
-                valid.append(corr[n])
-    return ",".join(dict.fromkeys(valid)) or "none"
+def determine_select_acyl(row, acyl_df):
+    try:
+        sub_no = int(row.get("Sub No.", 0))
+    except (TypeError, ValueError):
+        return "none"
+    if sub_no == 0:
+        return "none"
 
-def double_check_acyl_parts(row,acyl_df):
-    corr_map={2:"acyl",4:"isobutyryl",5:"2-methylbutyryl",7:"benzoyl"}
-    orig=[p.strip() for p in str(row.get("Correct Acyl part","")).split(",") if p.strip()]
-    pat=re.findall(r"C(\d+)\*(\d+)",row.get("Sub_An",""))
-    if not pat: return ",".join(orig)
-    carbon_to_ident={}
-    for ident in orig:
-        sel=acyl_df[acyl_df["Identification"]==ident]
+    subs = [c.strip() for c in str(row.get("Sub Carbon", "")).split(",") if c.strip().upper().startswith("C")]
+
+    raw = [p.strip() for p in str(row.get("Acyl part", "")).split(",") if p.strip()]
+    parsed = []
+    for p in raw:
+        m = re.match(r"(.+?)\(\s*([\d\.]+)\s*\)$", p)
+        if m:
+            parsed.append((m.group(1), float(m.group(2))))
+        else:
+            parsed.append((p, None))
+
+    def _cands(parts):
+        out = []
+        for name, score in parts:
+            sel = acyl_df[acyl_df["Identification"] == name]
+            if not sel.empty:
+                ccount = count_element(sel.iloc[0]["Acyl Formula"], "C")
+                out.append((score or 0.0, name, ccount))
+        return out
+
+    if sub_no == 2 and len(subs) in (1, 2):
+        needed = 2 * int(subs[0][1:]) if len(subs) == 1 else sum(int(c[1:]) for c in subs)
+        allc = _cands(parsed)
+
+        if len(subs) == 2:
+            pairs = [
+                ((s1, n1), (s2, n2))
+                for s1, n1, c1 in allc
+                for s2, n2, c2 in allc
+                if n1 != n2 and c1 + c2 == needed
+            ]
+        else:
+            # 5b. 相同碳数的两重子结构
+            pairs = [
+                ((s1, n1), (s2, n2))
+                for (s1, n1, c1), (s2, n2, c2) in combinations(allc, 2)
+                if c1 + c2 == needed
+            ]
+
+        if pairs:
+            best = max(pairs, key=lambda pr: pr[0][0] + pr[1][0])
+            return ",".join(dict.fromkeys([best[0][1], best[1][1]]))
+
+    correction_map = {2: "acyl", 4: "isobutyryl", 5: "2-methylbutyryl", 7: "benzoyl"}
+    result = []
+    for sc in subs:
+        try:
+            n = int(sc[1:])
+        except ValueError:
+            continue
+
+        choices = [
+            (score or 0.0, name)
+            for name, score in parsed
+            for _, r in acyl_df[acyl_df["Identification"] == name].iterrows()
+            if count_element(r["Acyl Formula"], "C") == n
+        ]
+        if choices:
+            result.append(max(choices, key=lambda x: x[0])[1])
+        elif n in correction_map:
+            result.append(correction_map[n])
+
+    if result:
+        seen = set()
+        out = []
+        for x in result:
+            if x not in seen:
+                seen.add(x)
+                out.append(x)
+        return ",".join(out)
+
+    return "none"
+
+def double_check_acyl_parts_MD(row, acyl_df):
+    correct = str(row.get('Correct Acyl part', '')).strip()
+    if not correct or correct.lower() == 'none':
+        return correct
+
+    sub_an = str(row.get('Sub_An', '')).strip()
+    if not sub_an:
+        return correct
+
+    correct_items = [p.strip() for p in correct.split(',') if p.strip()]
+    if not correct_items:
+        return correct
+
+    correction_map = {2: 'acyl', 4: 'isobutyryl', 5: '2-methylbutyryl', 7: 'benzoyl'}
+    carbon_to_ident = {}
+    for ident in correct_items:
+        sel = acyl_df[acyl_df['Identification'] == ident]
         if not sel.empty:
-            c=count_element(sel.iloc[0]["Acyl Formula"],"C")
-            carbon_to_ident[c]=ident
-    res=[]
-    for c_str,count_str in pat:
-        c_num,cnt=int(c_str),int(count_str)
-        ident=carbon_to_ident.get(c_num, corr_map.get(c_num))
+            count = count_element(sel.iloc[0]['Acyl Formula'], 'C')
+            carbon_to_ident.setdefault(count, ident)
+        else:
+            for c_val, name in correction_map.items():
+                if ident == name:
+                    carbon_to_ident.setdefault(c_val, name)
+
+    pattern = re.findall(r'C(\d+)\*(\d+)', sub_an)
+    if not pattern:
+        return correct
+
+    result = []
+    for c_str, cnt_str in pattern:
+        cnum, cnt = int(c_str), int(cnt_str)
+        ident = carbon_to_ident.get(cnum) or correction_map.get(cnum)
         if ident:
-            res+= [ident]*cnt
-    return ",".join(res) or ",".join(orig)
+            result.extend([ident] * cnt)
+
+    return ','.join(result) if result else correct
+
+
+def double_check_acyl_parts_D(row):
+    try:
+        sub_no = int(row.get('Sub No.', 0))
+    except (TypeError, ValueError):
+        sub_no = 0
+
+    correct = str(row.get('Correct Acyl part', '')).strip()
+    if not correct or correct.lower() == 'none':
+        return correct
+
+    items = [p.strip() for p in correct.split(',') if p.strip()]
+    if sub_no == 2 and len(items) == 1:
+        return ','.join([items[0]] * 2)
+
+    return correct
+
+def double_check_acyl_parts_dispatcher(row, acyl_df):
+    t = str(row.get('type', '')).strip()
+    if t == 'D':
+        return double_check_acyl_parts_D(row)
+    elif t == 'MD':
+        return double_check_acyl_parts_MD(row, acyl_df)
+    # fallback
+    return str(row.get('Correct Acyl part', 'none')).strip()
+
 
 def _sort_key(s: str):
     m = re.match(r'^([A-Za-z]+)(\d+)$', s)
@@ -4278,7 +4574,7 @@ df_a = pd.DataFrame({
     "A number":["A1","A2","A3","A4","A5","A6","A7","A8","A9","A10","A11"],
     "A Struc":["1,2-en-3-one","1,2-dihydro-3-one","1,2-en-3-ol","1,2-dihydro-3-ol",
                "1,10-en-3-one","1-alkyl-3-one","1-alkyl-2-ol-3-one","1-alkyl-3-ol",
-               "1-alkyl-2-ol-3-ol","3,4-seco","bicyclo [2.2.1] heptane"]
+               "1-alkyl-2-ol-3-ol","3,4-seco","bicyclo [2.2.1] heptane ring"]
 })
 df_b = pd.DataFrame({
     "B number":["B1","B2","B3","B4","B5","B6","B7","B8"],
@@ -4295,8 +4591,8 @@ df_c = pd.DataFrame({
 })
 df_m = pd.DataFrame({
     "M number":["M1","M2","M3","M4","M5","M6","M7","M8","M9"],
-    "M Struc":[["C9 ring with no substituents"],["C10 ring with no substituents"],
-               ["C10 ring with one substituents"],["C10 ring with two substituents","C10 ring with one substituents and a hydroxyl group"],
+    "M Struc":[["C9 ring with no substituent"],["C10 ring with no substituent"],
+               ["C10 ring with one substituent"],["C10 ring with two substituents","C10 ring with one substituents and a hydroxyl group"],
                ["C10 ring with three substituents","C10 ring with two substituents and a hydroxyl group"],
                ["C10 ring with four substituents","C10 ring with three substituents and a hydroxyl group"],
                ["C14 ring with an olenfinic"],["C16 ring with an olenfinic"],["C16 ring with one substituents"]]
@@ -4365,7 +4661,10 @@ def annotation_process_data(query_csv, acyl_csv, pseudo_db, output_csv):
     df_exp["Acyl part"]=df_exp.apply(lambda r:determine_acyl_parts(r,acyl_df),axis=1)
     df_exp["Acyl part"]=df_exp.apply(lambda r:refine_acyl_parts_by_olefinic(r,acyl_df),axis=1)
     df_exp["Correct Acyl part"]=df_exp.apply(lambda r:determine_select_acyl(r,acyl_df),axis=1)
-    df_exp["Correct Acyl part"]=df_exp.apply(lambda r:double_check_acyl_parts(r,acyl_df),axis=1)
+    df_exp['Correct Acyl part'] = df_exp.apply(
+        lambda r: double_check_acyl_parts_dispatcher(r, acyl_df),
+        axis=1
+    )
 
     df_exp["A_id"] = df_exp.apply(map_a_number, axis=1)
     df_exp["B_id"] = df_exp.apply(map_b_number, axis=1)
@@ -4406,6 +4705,312 @@ def annotation_process_data(query_csv, acyl_csv, pseudo_db, output_csv):
     return zip_path
 
 """ Tab 8 related Functions """
+@app.callback(
+    Output('annotation-ex-query-csv-file-path', 'children'),
+    Input('annotation-ex-query-upload-csv', 'contents'),
+    State('annotation-ex-query-upload-csv', 'filename')
+)
+def update_annotation_query_csv_file_path(csv_contents, csv_filenames):
+    print("CSV upload triggered")
+    # Check if both content and filenames are provided
+    if csv_contents and csv_filenames:
+        print(f"CSV file names: {csv_filenames}")
+        # Save each file and store the paths
+        csv_paths = [save_tab8_file(name, content) for name, content in zip(csv_filenames, csv_contents)]
+        print(f"CSV paths saved: {csv_paths}")
+        csv_path_text = f"Uploaded CSV files: {', '.join(csv_filenames)}"
+    else:
+        print("No CSV file uploaded")
+        csv_path_text = "No CSV file uploaded"
+    return csv_path_text
+
+@app.callback(
+    Output('annotation-ex-pseudo-DB-file-path', 'children'),
+    Input('annotation-ex-pseudo-DB-upload-db', 'contents'),
+    State('annotation-ex-pseudo-DB-upload-db', 'filename')
+)
+def update_annotation_pseudo_DB_file_path(content, filename):
+    print("pseudo-DB upload triggered")
+    if content and filename:
+        print(f"pseudo-DB file name: {filename}")
+        saved_file = save_uploaded_file(filename, content)
+        if saved_file:
+            print(f"File saved at: {saved_file}")
+            return f"Uploaded pseudo-DB file: {filename}"
+        else:
+            print("Failed to upload the file.")
+            return "Failed to upload the file."
+    print("No DB file uploaded")
+    return "No DB file uploaded"
+
+
+@app.callback(
+    Output('rule-container', 'children'),
+    Input('add-rule-button', 'n_clicks'),
+    State('rule-container', 'children')
+)
+def add_new_rule(n_clicks, current_children):
+    if not n_clicks:
+        raise dash.exceptions.PreventUpdate
+
+    new_index = len(current_children) + 1
+
+    new_rule = html.Div(id={'type': 'rule-block', 'index': new_index}, children=[
+        html.Div([
+            html.Label(f'Module Name {new_index}:', style={'color': 'black', 'fontWeight': 'bold'}),
+            dcc.Input(id={'type': 'module-name', 'index': new_index}, placeholder='eg. A parts',
+                      style={'marginLeft': '10px'}),
+        ], style={'marginBottom': '10px'}),
+        html.Div([
+            html.Label('Adduct ion:', style={'color': 'black', 'fontWeight': 'bold'}),
+            dcc.Input(id={'type': 'adduct-ion', 'index': new_index}, placeholder='eg. [M+H-H2O]-',
+                      style={'marginLeft': '10px'}),
+        ], style={'marginBottom': '10px'}),
+        html.Div([
+            html.Label(f'Neutral loss {new_index}:', style={'color': 'black', 'fontWeight': 'bold'}),
+            dcc.Input(id={'type': 'neutral-loss', 'index': new_index}, placeholder='e.g. CxHyOz',
+                      style={'marginLeft': '10px', 'width': '120px'}),
+            html.Label('Neutral loss score:', style={'color': 'black', 'fontWeight': 'bold', 'marginLeft': '10px'}),
+            dcc.Input(id={'type': 'neutral-loss-score', 'index': new_index}, placeholder='e.g. 10', type='number',
+                      style={'marginLeft': '10px', 'width': '80px'}),
+        ], style={'marginBottom': '10px'}),
+        html.Div([
+            html.Label(f'Feature ion {new_index}:', style={'color': 'black', 'fontWeight': 'bold'}),
+            dcc.Input(id={'type': 'feature-ion', 'index': new_index}, placeholder='e.g. CxHyOz',
+                      style={'marginLeft': '10px', 'width': '120px'}),
+            html.Label('Feature ion score:', style={'color': 'black', 'fontWeight': 'bold', 'marginLeft': '10px'}),
+            dcc.Input(id={'type': 'feature-ion-score', 'index': new_index}, placeholder='e.g. 10', type='number',
+                      style={'marginLeft': '10px', 'width': '80px'}),
+        ], style={'marginBottom': '10px'}),
+        html.Div([
+            html.Label('Relationship:', style={'color': 'black', 'fontWeight': 'bold'}),
+            dcc.Dropdown(id={'type': 'relation-loss-ion', 'index': new_index},
+                         options=[{'label': 'AND', 'value': 'AND'}, {'label': 'OR', 'value': 'OR'},
+                                  {'label': 'None', 'value': 'None'}],
+                         placeholder='Select relation', style={'marginLeft': '10px', 'width': '120px'}),
+        ], style={'marginBottom': '10px'}),
+        html.Div([
+            html.Label('Output Module Substructure:', style={'color': 'black', 'fontWeight': 'bold'}),
+            dcc.Input(id={'type': 'output-substructure', 'index': new_index}, placeholder='e.g. A-seco',
+                      style={'marginLeft': '10px'}),
+        ], style={'marginBottom': '10px'}),
+    ], style={'backgroundColor': '#F0F0F0', 'padding': '15px', 'borderRadius': '5px', 'marginTop': '10px'})
+
+    current_children.append(new_rule)
+    return current_children
+
+@app.callback(
+    Output('annotation-rule-store', 'data'),
+    Input({'type': 'module-name', 'index': ALL}, 'value'),
+    Input({'type': 'adduct-ion', 'index': ALL}, 'value'),
+    Input({'type': 'neutral-loss', 'index': ALL}, 'value'),
+    Input({'type': 'neutral-loss-score', 'index': ALL}, 'value'),
+    Input({'type': 'feature-ion', 'index': ALL}, 'value'),
+    Input({'type': 'feature-ion-score', 'index': ALL}, 'value'),
+    Input({'type': 'relation-loss-ion', 'index': ALL}, 'value'),
+    Input({'type': 'output-substructure', 'index': ALL}, 'value'),
+)
+def update_rules_store(
+    module_names, adduct_ions, neutral_losses, neutral_loss_scores,
+    feature_ions, feature_ion_scores, relations, output_substructures
+):
+    rules = []
+    n = len(module_names)
+    for i in range(n):
+        rule = dict(
+            module_name = module_names[i] if module_names[i] not in ['', None] else None,
+            adduct_ion = adduct_ions[i] if adduct_ions[i] not in ['', None] else None,
+            neutral_loss = neutral_losses[i] if neutral_losses[i] not in ['', None] else None,
+            neutral_loss_score = neutral_loss_scores[i] if neutral_loss_scores[i] not in ['', None] else None,
+            feature_ion = feature_ions[i] if feature_ions[i] not in ['', None] else None,
+            feature_ion_score = feature_ion_scores[i] if feature_ion_scores[i] not in ['', None] else None,
+            relation = relations[i] if relations[i] not in ['', None] else None,
+            output_substructure = output_substructures[i] if output_substructures[i] not in ['', None] else None,
+        )
+        rules.append(rule)
+    return rules
+
+@app.callback(
+    Output('annotation-ex-output', 'children'),
+    Input('run-annotation-ex', 'n_clicks'),
+    State('annotation-ex-query-upload-csv', 'filename'),
+    State('annotation-rule-store', 'data')
+)
+def run_annotation(n_clicks, query_filenames, rules):
+    if not n_clicks:
+        raise PreventUpdate
+
+    if not query_filenames:
+        print("No CSV file uploaded")
+        return "Please upload at least one query CSV file."
+
+    query_files = query_filenames if isinstance(query_filenames, list) else [query_filenames]
+    output_files = []
+
+    for query_file in query_files:
+        query_path = os.path.join(UPLOAD_DIR, 'tab_7_uploads', query_file)
+        print(f"\nProcessing file: {query_file}")
+        df = pd.read_csv(query_path)
+        print(f"  Data shape: {df.shape}")
+        print(f"  Columns: {list(df.columns)}")
+
+        df_annotated = df.copy()
+
+        for idx, rule in enumerate(rules, start=1):
+            print(f"\nApplying Rule {idx}: {rule}")
+            module_name = rule.get('module_name')
+            adduct_ion = rule.get('adduct_ion')
+            neutral_losses = rule.get('neutral_loss')
+            neutral_loss_score = rule.get('neutral_loss_score')
+            feature_ions = rule.get('feature_ion')
+            feature_ion_score = rule.get('feature_ion_score')
+            relation = rule.get('relation')
+            output_substructure = rule.get('output_substructure')
+
+            conditions = []
+
+            if adduct_ion:
+                cond_adduct = (df['adduct ion'] == adduct_ion)
+                print(f"  Adduct ion '{adduct_ion}' hits: {cond_adduct.sum()}")
+                conditions.append(cond_adduct)
+
+            if neutral_losses:
+                loss_conditions = []
+                for nl_formula in neutral_losses.split(','):
+                    nl_formula = nl_formula.strip()
+                    match = re.match(r'(C\d+)', nl_formula)
+                    if match:
+                        prefix = match.group(1)
+                        col_loss = f"{prefix} loss"
+                        if col_loss in df.columns:
+                            cond = (df[col_loss].astype(str).str.upper() == nl_formula.upper())
+                            print(f"  Neutral loss '{col_loss}' == '{nl_formula}' hits: {cond.sum()}")
+                            loss_conditions.append(cond)
+                        else:
+                            print(f"  Neutral loss column '{col_loss}' not found.")
+                    else:
+                        print(f"  Neutral loss input '{nl_formula}' not recognized as CxHyOz.")
+                if loss_conditions:
+                    total_loss = np.logical_or.reduce(loss_conditions)
+                    print(f"  Total neutral loss OR hits: {total_loss.sum()}")
+                    conditions.append(total_loss)
+
+            if feature_ions:
+                ion_conditions = []
+                for fi_formula in feature_ions.split(','):
+                    fi_formula = fi_formula.strip()
+                    match = re.match(r'(C\d+)', fi_formula)
+                    if match:
+                        prefix = match.group(1)
+                        col_ion = f"{prefix} ion"
+                        if col_ion in df.columns:
+                            cond = (df[col_ion].astype(str).str.upper() == fi_formula.upper())
+                            print(f"  Feature ion '{col_ion}' == '{fi_formula}' hits: {cond.sum()}")
+                            ion_conditions.append(cond)
+                        else:
+                            print(f"  Feature ion column '{col_ion}' not found.")
+                    else:
+                        print(f"  Feature ion input '{fi_formula}' not recognized as CxHyOz.")
+                if ion_conditions:
+                    total_ion = np.logical_or.reduce(ion_conditions)
+                    print(f"  Total feature ion OR hits: {total_ion.sum()}")
+                    conditions.append(total_ion)
+
+            if conditions:
+                if relation == 'AND':
+                    final_condition = np.logical_and.reduce(conditions)
+                    print(f"  Final hits after AND: {final_condition.sum()}")
+                elif relation == 'OR':
+                    final_condition = np.logical_or.reduce(conditions)
+                    print(f"  Final hits after OR: {final_condition.sum()}")
+                else:
+                    final_condition = np.logical_and.reduce(conditions)
+                    print(f"  Final hits after default AND: {final_condition.sum()}")
+
+                hits = final_condition.sum()
+                if module_name and output_substructure and hits > 0:
+                    df_annotated.loc[final_condition, module_name] = output_substructure
+                    print(f"  Annotated {hits} rows in column '{module_name}' with '{output_substructure}'.")
+            else:
+                print(f"  Rule {idx} has no valid conditions matched.")
+
+        base, ext = os.path.splitext(query_file)
+        output_file = f"{base}-an{ext}"
+        output_path = os.path.join(UPLOAD_DIR, 'tab_7_uploads', output_file)
+        df_annotated.to_csv(output_path, index=False)
+        print(f"\n  Saved annotated file: {output_file} at {output_path}")
+        output_files.append(output_file)
+
+    return f"Annotation completed. Files saved: {', '.join(output_files)}"
+
+@app.callback(
+    Output('annotation-ex-file-dropdown', 'options'),
+    Input('run-annotation-ex', 'n_clicks'),
+    State('annotation-ex-query-upload-csv', 'filename')
+)
+def annotation_file_dropdown(n_clicks, csv_filenames):
+    if n_clicks is None or n_clicks == 0:
+        return []
+    csv_files = csv_filenames if isinstance(csv_filenames, list) else [csv_filenames]
+    return [{'label': f"{os.path.splitext(fn)[0]}-an.csv", 'value': f"{os.path.splitext(fn)[0]}-an.csv"}
+            for fn in csv_files]
+
+@app.callback(
+    Output('annotation-ex-results-table', 'children'),
+    Input('annotation-ex-file-dropdown', 'value')
+)
+def annotation_display_selected_file_results(selected_file):
+    if not selected_file:
+        return "Please select a file to view results."
+
+    file_path = os.path.join(UPLOAD_DIR, 'tab_8_uploads', selected_file)
+    if not os.path.exists(file_path):
+        return f"File {selected_file} not found."
+
+    df = pd.read_csv(file_path)
+    return dash_table.DataTable(
+        data=df.to_dict('records'),
+        columns=[{'name': i, 'id': i} for i in df.columns],
+        style_header={'fontWeight': 'bold'},
+        style_cell={'textAlign': 'left'}
+    )
+
+def save_uploaded_file_ex(name, content, folder='tab_8_uploads'):
+    folder_path = os.path.join(UPLOAD_DIR, folder)
+    if not os.path.exists(folder_path):
+        os.makedirs(folder_path)
+
+    print(f"Saving file {name} in folder {folder}")
+
+    try:
+        content_type, content_string = content.split(',')
+        print(f"Content type: {content_type}")
+    except ValueError as e:
+        print(f"Error splitting content for file {name}: {e}")
+        return None
+
+    decoded = base64.b64decode(content_string)
+    file_path = os.path.join(folder_path, name)
+
+    with open(file_path, 'wb') as f:
+        f.write(decoded)
+    print(f"File saved successfully at {file_path}")
+    return file_path
+
+def save_tab8_file(name, content, tab_folder='tab_8_uploads'):
+    print(f"Saving file: {name} to folder: {tab_folder}")
+    folder_path = os.path.join(UPLOAD_DIR, tab_folder)
+    if not os.path.exists(folder_path):
+        os.makedirs(folder_path)
+    content_type, content_string = content.split(',')
+    decoded = base64.b64decode(content_string)
+    file_path = os.path.join(folder_path, name)
+    with open(file_path, 'wb') as f:
+        f.write(decoded)
+    print(f"File saved at: {file_path}")
+    return file_path
+
+""" Tab 9 related Functions """
 @app.callback(
     Output('visualization-query-csv-file-path', 'children'),
     Input('visualization-query-upload-csv', 'contents'),
@@ -4666,30 +5271,6 @@ def update_summary_charts(n_clicks, csv_filenames):
     count_fig, area_fig = generate_summary_bar_charts_plotly(df)
     return count_fig, area_fig
 
-@app.callback(
-    Output("summary-bar-count", "children"),
-    Output("summary-bar-area", "children"),
-    Input("auto-trigger", "n_intervals"),
-    prevent_initial_call='initial_duplicate'
-)
-def load_default_if_available(n):
-    if not os.path.exists(DEFAULT_FILE_PATH):
-        return "No default data", ""
-
-    df = pd.read_csv(DEFAULT_FILE_PATH)
-
-    if "index" not in df.columns:
-        if "row ID" in df.columns:
-            unique_row_ids = df["row ID"].dropna().unique()
-            df["index"] = df["row ID"].map({rid: idx + 1 for idx, rid in enumerate(sorted(unique_row_ids))})
-        else:
-            df["index"] = df.index + 1
-
-    try:
-        return generate_summary_bar_charts_plotly(df)
-    except Exception as e:
-        return html.Div(f"❌ Error: {str(e)}"), ""
-
 def generate_summary_bar_charts_plotly(df):
     peak_cols = [c for c in df.columns if c.endswith("Peak area")]
     if not peak_cols:
@@ -4763,7 +5344,7 @@ def smiles_to_image(smiles, size=(250, 250)):
     else:
         return None
 
-def save_tab8_file(name, content, tab_folder='tab_8_uploads'):
+def save_tab9_file(name, content, tab_folder='tab_9_uploads'):
     print(f"Saving file: {name} to folder: {tab_folder}")
     folder_path = os.path.join(UPLOAD_DIR, tab_folder)
     if not os.path.exists(folder_path):
