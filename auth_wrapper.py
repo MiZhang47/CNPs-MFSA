@@ -1,4 +1,5 @@
 import os
+from functools import wraps  
 from flask import Flask, request, Response
 from CNPs_MFSA_Web import app 
 
@@ -16,6 +17,7 @@ def authenticate():
     )
 
 def requires_auth(f):
+    @wraps(f)
     def decorated(*args, **kwargs):
         auth = request.authorization
         if not auth or not check_auth(auth.username, auth.password):
