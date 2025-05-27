@@ -1,0 +1,111 @@
+import os
+import pandas as pd
+from rdkit import Chem
+from rdkit.Chem import Draw
+
+base_path = r"C:\Users\xxx\Desktop\D_SMILES_x215\Unique_Rings"
+file_a = os.path.join(base_path, "A_Ring_Unique_Renumbered.csv")
+file_b = os.path.join(base_path, "B_Ring_Unique_Renumbered.csv")
+output_ab_csv = os.path.join(base_path, "Fused_AB_SMILES.csv")
+output_img_folder = os.path.join(base_path, "Fused_Images")
+os.makedirs(output_img_folder, exist_ok=True)
+
+def color_atoms(smiles, atom_indices_dict, color_map):
+    mol = Chem.MolFromSmiles(smiles)
+    for label, isotope in color_map.items():
+        idx = atom_indices_dict.get(label)
+        if idx is not None:
+            mol.GetAtomWithIdx(idx).SetIsotope(isotope)
+    return mol
+
+def mark_colored_atoms(mol, color_map):
+    inverse_map = {v: k for k, v in color_map.items()}
+    for atom in mol.GetAtoms():
+        isotope = atom.GetIsotope()
+        if isotope in inverse_map:
+            atom.SetAtomMapNum(inverse_map[isotope])
+        atom.SetIsotope(0)
+    return mol
+
+def fuse_by_common_edge_three(mol_a, mol_b, map_a, map_b, shared_labels):
+    label_keep = shared_labels[0]
+    label_fuse = shared_labels[1:]
+    idx_keep_a = map_a[label_keep]
+    idx_fuse_a = [map_a[l] for l in label_fuse]
+    idx_all_b = [map_b[l] for l in shared_labels]
+    offset = mol_a.GetNumAtoms()
+
+    anchors, nbs, bts = [], [], []
+    for l in label_fuse:
+        src_b = map_b[l]
+        tgt_a = map_a[l]
+        atom_b = mol_b.GetAtomWithIdx(src_b)
+        for nbr in atom_b.GetNeighbors():
+            n_idx = nbr.GetIdx()
+            if n_idx in idx_all_b:
+                continue
+            anchors.append(tgt_a)
+            nbs.append(n_idx + offset)
+            bts.append(mol_b.GetBondBetweenAtoms(src_b, n_idx).GetBondType())
+
+    combo = Chem.CombineMols(mol_a, mol_b)
+    em = Chem.EditableMol(combo)
+
+    remove = sorted([idx + offset for idx in idx_all_b], reverse=True)
+    for i in remove:
+        em.RemoveAtom(i)
+
+    def shift(i): return i - sum(1 for r in remove if i > r)
+    nbs = [shift(i) for i in nbs]
+    anchors = [shift(i) for i in anchors]
+
+    fused_tmp = em.GetMol()
+    for a, nb, bt in zip(anchors, nbs, bts):
+        if not fused_tmp.GetBondBetweenAtoms(a, nb):
+            em.AddBond(a, nb, bt)
+
+    mol_fused = em.GetMol()
+    Chem.SanitizeMol(mol_fused)
+    return mol_fused
+
+df_a = pd.read_csv(file_a)
+df_b = pd.read_csv(file_b)
+fused_ab_data = []
+color_tag = {8: 8, 9: 9}
+
+for i, row_a in df_a.iterrows():
+    for j, row_b in df_b.iterrows():
+        try:
+            smi_a = row_a['Ring_SMILES']
+            smi_b = row_b['Ring_SMILES']
+            idx_a = eval(row_a['Ring_Atom_Indices'])
+            idx_b = eval(row_b['Ring_Atom_Indices'])
+            num_a = eval(row_a['Ring_Assigned_Numbers'])
+            num_b = eval(row_b['Ring_Assigned_Numbers'])
+            map_a = dict(zip(num_a, idx_a))
+            map_b = dict(zip(num_b, idx_b))
+
+            mol_a = Chem.MolFromSmiles(smi_a)
+            mol_b = color_atoms(smi_b, map_b, color_tag)
+
+            mol_ab = fuse_by_common_edge_three(mol_a, mol_b, map_a, map_b, [1, 6, 2])
+            mol_ab = mark_colored_atoms(mol_ab, color_tag)
+
+            fused_smiles = Chem.MolToSmiles(mol_ab, isomericSmiles=True)
+            b_colored = Chem.MolToSmiles(mol_b)
+
+            fused_ab_data.append({
+                "A_Label": row_a.get("Label", f"A{i}"),
+                "B_Label": row_b.get("Label", f"B{j}"),
+                "A_SMILES": smi_a,
+                "B_SMILES": b_colored,
+                "Fused_AB_SMILES": fused_smiles
+            })
+
+            img = Draw.MolToImage(mol_ab, size=(300, 300))
+            img.save(os.path.join(output_img_folder, f"Fused_AB_{i}_{j}.png"))
+
+        except:
+            continue
+
+pd.DataFrame(fused_ab_data).to_csv(output_ab_csv, index=False, encoding="utf-8-sig")
