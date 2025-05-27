@@ -1,0 +1,171 @@
+Applying Rule 1: {'module_name': 'A parts', 'adduct_ion': None, 'neutral_loss': None, 'neutral_loss_score': None, 'feature_ion': 'C9H12,C9H12O,C8H12,C10H12O,C9H10O', 'feature_ion_score': None, 'relation': None, 'output_substructure': 'A1'}
+  Feature ion 'C9 ion' == 'C9H12' hits: 24
+  Feature ion 'C9 ion' == 'C9H12O' hits: 10
+  Feature ion 'C8 ion' == 'C8H12' hits: 34
+  Feature ion 'C10 ion' == 'C10H12O' hits: 33
+  Feature ion 'C9 ion' == 'C9H10O' hits: 21
+  Total feature ion OR hits: 87
+  Final hits after default AND: 87
+  Annotated 87 rows in column 'A parts' with 'A1'.
+
+Applying Rule 2: {'module_name': 'A parts', 'adduct_ion': '[M+H-CO2]+', 'neutral_loss': None, 'neutral_loss_score': None, 'feature_ion': None, 'feature_ion_score': None, 'relation': None, 'output_substructure': 'A6'}
+  Adduct ion '[M+H-CO2]+' hits: 1
+  Final hits after default AND: 1
+  Annotated 1 rows in column 'A parts' with 'A6'.
+
+Applying Rule 3: {'module_name': 'A parts', 'adduct_ion': None, 'neutral_loss': None, 'neutral_loss_score': None, 'feature_ion': 'C8H6O2', 'feature_ion_score': None, 'relation': None, 'output_substructure': 'A5'}
+  Feature ion 'C8 ion' == 'C8H6O2' hits: 5
+  Total feature ion OR hits: 5
+  Final hits after default AND: 5
+  Annotated 5 rows in column 'A parts' with 'A5'.
+
+Applying Rule 4: {'module_name': 'B parts', 'adduct_ion': None, 'neutral_loss': None, 'neutral_loss_score': None, 'feature_ion': 'C7H8O', 'feature_ion_score': None, 'relation': None, 'output_substructure': 'B1'}
+  Feature ion 'C7 ion' == 'C7H8O' hits: 17
+  Total feature ion OR hits: 17
+  Final hits after default AND: 17
+  Annotated 17 rows in column 'B parts' with 'B1'.
+
+Applying Rule 5: {'module_name': 'B parts', 'adduct_ion': None, 'neutral_loss': None, 'neutral_loss_score': None, 'feature_ion': 'C8H10', 'feature_ion_score': None, 'relation': None, 'output_substructure': 'B2'}
+  Feature ion 'C8 ion' == 'C8H10' hits: 19
+  Total feature ion OR hits: 19
+  Final hits after default AND: 19
+  Annotated 19 rows in column 'B parts' with 'B2'.
+
+Applying Rule 6: {'module_name': 'C parts', 'adduct_ion': None, 'neutral_loss': None, 'neutral_loss_score': None, 'feature_ion': ' C9H10O,C9H12O,C12H14O', 'feature_ion_score': None, 'relation': None, 'output_substructure': 'C1'}
+  Feature ion 'C9 ion' == 'C9H10O' hits: 21
+  Feature ion 'C9 ion' == 'C9H12O' hits: 10
+  Feature ion 'C12 ion' == 'C12H14O' hits: 11
+  Total feature ion OR hits: 40
+  Final hits after default AND: 40
+  Annotated 40 rows in column 'C parts' with 'C1'.
+
+Applying Rule 7: {'module_name': 'D parts', 'adduct_ion': None, 'neutral_loss': None, 'neutral_loss_score': None, 'feature_ion': 'C6H4O2,C7H6O,C5H4O', 'feature_ion_score': None, 'relation': None, 'output_substructure': 'D2'}
+  Feature ion 'C6 ion' == 'C6H4O2' hits: 7
+  Feature ion 'C7 ion' == 'C7H6O' hits: 4
+  Feature ion 'C5 ion' == 'C5H4O' hits: 0
+  Total feature ion OR hits: 11
+  Final hits after default AND: 11
+  Annotated 11 rows in column 'D parts' with 'D2'.
+
+Applying Rule 8: {'module_name': 'D parts', 'adduct_ion': None, 'neutral_loss': None, 'neutral_loss_score': None, 'feature_ion': 'C11H10O2,C18H18O2,C10H8O2', 'feature_ion_score': None, 'relation': None, 'output_substructure': 'D7'}
+  Feature ion 'C11 ion' == 'C11H10O2' hits: 44
+  Feature ion column 'C18 ion' not found.
+  Feature ion 'C10 ion' == 'C10H8O2' hits: 20
+  Total feature ion OR hits: 45
+  Final hits after default AND: 45
+  Annotated 45 rows in column 'D parts' with 'D7'.
+
+Applying Rule 9: {'module_name': 'D parts', 'adduct_ion': None, 'neutral_loss': None, 'neutral_loss_score': None, 'feature_ion': 'C15H16O,C13H14O', 'feature_ion_score': None, 'relation': None, 'output_substructure': 'D6'}
+  Feature ion 'C15 ion' == 'C15H16O' hits: 4
+  Feature ion 'C13 ion' == 'C13H14O' hits: 34
+  Total feature ion OR hits: 34
+  Final hits after default AND: 34
+  Annotated 34 rows in column 'D parts' with 'D6'.
+
+Applying Rule 10: {'module_name': 'C parts', 'adduct_ion': None, 'neutral_loss': None, 'neutral_loss_score': None, 'feature_ion': 'C9H10O,C9H12O', 'feature_ion_score': None, 'relation': None, 'output_substructure': 'C1'}
+  Feature ion 'C9 ion' == 'C9H10O' hits: 21
+  Feature ion 'C9 ion' == 'C9H12O' hits: 10
+  Total feature ion OR hits: 31
+  Final hits after default AND: 31
+  Annotated 31 rows in column 'C parts' with 'C1'.
+
+Applying Rule 11: {'module_name': 'A parts', 'adduct_ion': None, 'neutral_loss': None, 'neutral_loss_score': None, 'feature_ion': 'C9H12O2', 'feature_ion_score': None, 'relation': None, 'output_substructure': 'A6'}
+  Feature ion 'C9 ion' == 'C9H12O2' hits: 8
+  Total feature ion OR hits: 8
+  Final hits after default AND: 8
+  Annotated 8 rows in column 'A parts' with 'A6'.
+
+  Saved annotated file: Ext_lim_quant-re-mf-ad-nl-fi-an.csv at temp_uploads\tab_7_uploads\Ext_lim_quant-re-mf-ad-nl-fi-an.csv
+
+Processing file: Ext_lim_quant-re-mf-ad-nl-fi.csv
+  Data shape: (123, 64)
+  Columns: ['row ID', 'row m/z', 'row retention time', '20250417_chenpi_MeOH_1000ppm_ddms25.mzML Peak area', '20250417_huangbai_MeOH_1000ppm_ddms25.mzML Peak area', '20250417_zhishi_MeOH_1000ppm_ddms25.mzML Peak area', '20250417_qingpi_MeOH_1000ppm_ddms25.mzML Peak area', '20250417_chenpi_EtOAc_1000ppm_ddms25.mzML Peak area', '20250417_huangbai_EtOAc_1000ppm_ddms25.mzML Peak area', 'Limonoid Score', 'type', 'elemental composition', 'adduct ion', 'same peak', 'CO2 loss', 'CO2 loss_ion_pair', 'CO2 loss_intensity_pair', 'CO2 loss_score', 'C2 loss', 'C2 loss_ion_pair', 'C2 loss_intensity_pair', 'C2 loss_score', 'C6 ion', 'C6 ion_intensity', 'C6 ion_score', 'C5 ion', 'C5 ion_intensity', 'C5 ion_score', 'C7 ion', 'C7 ion_intensity', 'C7 ion_score', 'C8 ion', 'C8 ion_intensity', 'C8 ion_score', 'C9 ion', 'C9 ion_intensity', 'C9 ion_score', 'C10 ion', 'C10 ion_intensity', 'C10 ion_score', 'C11 ion', 'C11 ion_intensity', 'C11 ion_score', 'C12 ion', 'C12 ion_intensity', 'C12 ion_score', 'C13 ion', 'C13 ion_intensity', 'C13 ion_score', 'C14 ion', 'C14 ion_intensity', 'C14 ion_score', 'C15 ion', 'C15 ion_intensity', 'C15 ion_score', 'C16 ion', 'C16 ion_intensity', 'C16 ion_score', 'C17 ion', 'C17 ion_intensity', 'C17 ion_score', 'C26 ion', 'C26 ion_intensity', 'C26 ion_score']
+
+Applying Rule 1: {'module_name': 'A parts', 'adduct_ion': None, 'neutral_loss': None, 'neutral_loss_score': None, 'feature_ion': 'C9H12,C9H12O,C8H12,C10H12O,C9H10O', 'feature_ion_score': None, 'relation': None, 'output_substructure': 'A1'}
+  Feature ion 'C9 ion' == 'C9H12' hits: 24
+  Feature ion 'C9 ion' == 'C9H12O' hits: 10
+  Feature ion 'C8 ion' == 'C8H12' hits: 34
+  Feature ion 'C10 ion' == 'C10H12O' hits: 33
+  Feature ion 'C9 ion' == 'C9H10O' hits: 21
+  Total feature ion OR hits: 87
+  Final hits after default AND: 87
+  Annotated 87 rows in column 'A parts' with 'A1'.
+
+Applying Rule 2: {'module_name': 'A parts', 'adduct_ion': '[M+H-CO2]+', 'neutral_loss': None, 'neutral_loss_score': None, 'feature_ion': None, 'feature_ion_score': None, 'relation': None, 'output_substructure': 'A6'}
+  Adduct ion '[M+H-CO2]+' hits: 1
+  Final hits after default AND: 1
+  Annotated 1 rows in column 'A parts' with 'A6'.
+
+Applying Rule 3: {'module_name': 'A parts', 'adduct_ion': None, 'neutral_loss': None, 'neutral_loss_score': None, 'feature_ion': 'C8H6O2', 'feature_ion_score': None, 'relation': None, 'output_substructure': 'A5'}
+  Feature ion 'C8 ion' == 'C8H6O2' hits: 5
+  Total feature ion OR hits: 5
+  Final hits after default AND: 5
+  Annotated 5 rows in column 'A parts' with 'A5'.
+
+Applying Rule 4: {'module_name': 'B parts', 'adduct_ion': None, 'neutral_loss': None, 'neutral_loss_score': None, 'feature_ion': 'C7H8O', 'feature_ion_score': None, 'relation': None, 'output_substructure': 'B1'}
+  Feature ion 'C7 ion' == 'C7H8O' hits: 17
+  Total feature ion OR hits: 17
+  Final hits after default AND: 17
+  Annotated 17 rows in column 'B parts' with 'B1'.
+
+Applying Rule 5: {'module_name': 'B parts', 'adduct_ion': None, 'neutral_loss': None, 'neutral_loss_score': None, 'feature_ion': 'C8H10', 'feature_ion_score': None, 'relation': None, 'output_substructure': 'B2'}
+  Feature ion 'C8 ion' == 'C8H10' hits: 19
+  Total feature ion OR hits: 19
+  Final hits after default AND: 19
+  Annotated 19 rows in column 'B parts' with 'B2'.
+
+Applying Rule 6: {'module_name': 'C parts', 'adduct_ion': None, 'neutral_loss': None, 'neutral_loss_score': None, 'feature_ion': ' C9H10O,C9H12O,C12H14O', 'feature_ion_score': None, 'relation': None, 'output_substructure': 'C1'}
+  Feature ion 'C9 ion' == 'C9H10O' hits: 21
+  Feature ion 'C9 ion' == 'C9H12O' hits: 10
+  Feature ion 'C12 ion' == 'C12H14O' hits: 11
+  Total feature ion OR hits: 40
+  Final hits after default AND: 40
+  Annotated 40 rows in column 'C parts' with 'C1'.
+
+Applying Rule 7: {'module_name': 'D parts', 'adduct_ion': None, 'neutral_loss': None, 'neutral_loss_score': None, 'feature_ion': 'C6H4O2,C7H6O,C5H4O', 'feature_ion_score': None, 'relation': None, 'output_substructure': 'D2'}
+  Feature ion 'C6 ion' == 'C6H4O2' hits: 7
+  Feature ion 'C7 ion' == 'C7H6O' hits: 4
+  Feature ion 'C5 ion' == 'C5H4O' hits: 0
+  Total feature ion OR hits: 11
+  Final hits after default AND: 11
+  Annotated 11 rows in column 'D parts' with 'D2'.
+
+Applying Rule 8: {'module_name': 'D parts', 'adduct_ion': None, 'neutral_loss': None, 'neutral_loss_score': None, 'feature_ion': 'C11H10O2,C18H18O2,C10H8O2', 'feature_ion_score': None, 'relation': None, 'output_substructure': 'D7'}
+  Feature ion 'C11 ion' == 'C11H10O2' hits: 44
+  Feature ion column 'C18 ion' not found.
+  Feature ion 'C10 ion' == 'C10H8O2' hits: 20
+  Total feature ion OR hits: 45
+  Final hits after default AND: 45
+  Annotated 45 rows in column 'D parts' with 'D7'.
+
+Applying Rule 9: {'module_name': 'D parts', 'adduct_ion': None, 'neutral_loss': None, 'neutral_loss_score': None, 'feature_ion': 'C15H16O,C13H14O', 'feature_ion_score': None, 'relation': None, 'output_substructure': 'D6'}
+  Feature ion 'C15 ion' == 'C15H16O' hits: 4
+  Feature ion 'C13 ion' == 'C13H14O' hits: 34
+  Total feature ion OR hits: 34
+  Final hits after default AND: 34
+  Annotated 34 rows in column 'D parts' with 'D6'.
+
+Applying Rule 10: {'module_name': 'C parts', 'adduct_ion': None, 'neutral_loss': None, 'neutral_loss_score': None, 'feature_ion': 'C9H10O,C9H12O', 'feature_ion_score': None, 'relation': None, 'output_substructure': 'C1'}
+  Feature ion 'C9 ion' == 'C9H10O' hits: 21
+  Feature ion 'C9 ion' == 'C9H12O' hits: 10
+  Total feature ion OR hits: 31
+  Final hits after default AND: 31
+  Annotated 31 rows in column 'C parts' with 'C1'.
+
+Applying Rule 11: {'module_name': 'A parts', 'adduct_ion': None, 'neutral_loss': None, 'neutral_loss_score': None, 'feature_ion': 'C9H12O2', 'feature_ion_score': None, 'relation': None, 'output_substructure': 'A6'}
+  Feature ion 'C9 ion' == 'C9H12O2' hits: 8
+  Total feature ion OR hits: 8
+  Final hits after default AND: 8
+  Annotated 8 rows in column 'A parts' with 'A6'.
+
+Applying Rule 12: {'module_name': 'B parts', 'adduct_ion': None, 'neutral_loss': None, 'neutral_loss_score': None, 'feature_ion': 'C7H6O', 'feature_ion_score': None, 'relation': None, 'output_substructure': 'B3'}
+  Feature ion 'C7 ion' == 'C7H6O' hits: 4
+  Total feature ion OR hits: 4
+  Final hits after default AND: 4
+  Annotated 4 rows in column 'B parts' with 'B3'.
+
+Applying Rule 13: {'module_name': 'D parts', 'adduct_ion': None, 'neutral_loss': None, 'neutral_loss_score': None, 'feature_ion': 'C11H12O2, C18H20O2', 'feature_ion_score': None, 'relation': None, 'output_substructure': 'D8'}
+  Feature ion 'C11 ion' == 'C11H12O2' hits: 0
+  Feature ion column 'C18 ion' not found.
+  Total feature ion OR hits: 0
+  Final hits after default AND: 0
