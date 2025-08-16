@@ -5359,28 +5359,28 @@ def save_tab9_file(name, content, tab_folder='tab_9_uploads'):
     print(f"File saved at: {file_path}")
     return file_path
 
-USERNAME = 'cnps'
-PASSWORD = '123456'
+# USERNAME = 'cnps'
+# PASSWORD = '123456'
 
-def requires_auth(f):
-    @wraps(f)
-    def decorated(*args, **kwargs):
-        auth = request.authorization
-        if not auth or not (auth.username == USERNAME and auth.password == PASSWORD):
-            return Response(
-                'Could not verify your login.\n'
-                'Please provide correct username and password.', 401,
-                {'WWW-Authenticate': 'Basic realm="Login Required"'}
-            )
-        return f(*args, **kwargs)
-    return decorated
+# def requires_auth(f):
+    # @wraps(f)
+    # def decorated(*args, **kwargs):
+        # auth = request.authorization
+        # if not auth or not (auth.username == USERNAME and auth.password == PASSWORD):
+            # return Response(
+                # 'Could not verify your login.\n'
+                # 'Please provide correct username and password.', 401,
+                # {'WWW-Authenticate': 'Basic realm="Login Required"'}
+            # )
+        # return f(*args, **kwargs)
+    # return decorated
 
 server = app.server
 
-@server.before_request
-@requires_auth
-def before_request_func():
-    pass 
+# @server.before_request
+# @requires_auth
+# def before_request_func():
+    # pass 
 
 if __name__ == '__main__':
     app.run(debug=False, host='0.0.0.0', port=10000)
@@ -5390,3 +5390,4 @@ if __name__ == '__main__':
 # =========================
 # if __name__ == '__main__':
     # app.run_server(debug=True)
+
