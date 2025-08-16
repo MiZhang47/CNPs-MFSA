@@ -97,7 +97,7 @@ app.layout = html.Div([  # Main container for the application
                 "📖 If you use CNPs-MFSA in your research, please cite: "
                 "Mi Zhang et al. Automated annotation of complex natural products using a modular fragmentation–based structure assembly (MFSA) strategy. "
                 "Science Advances, 11, eadw4693 (2025). https://doi.org/10.1126/sciadv.adw4693",
-                style={'fontSize': '12px'} 
+                style={'fontSize': '16px'} 
             )
         ],
         style={
@@ -5403,6 +5403,7 @@ if __name__ == '__main__':
 # =========================
 # if __name__ == '__main__':
     # app.run_server(debug=True)
+
 
 
 
