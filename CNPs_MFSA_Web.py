@@ -89,11 +89,24 @@ app.layout = html.Div([  # Main container for the application
                            'fontWeight': 'bold'}),
         ], style={'display': 'flex', 'alignItems': 'center'}),  # Align logo and title horizontally in a single row
         # Add the description paragraph below the title
-        html.P(
+        html.P([
             'Welcome! Complex natural products (CNPs) Structure Annotation Tool was constructed based on a modular '
-            'fragmentation-based structural assembly (MFSA) strategy. This tool provides functionalities to recognize target natural products, calculate molecular compositions, determine possible adduct ions, identify characteristic neutral losses, extract feature ions, calculate cosine similarity scores between standard and query spectra, and provide possible structure annotation. Please select the relevant tab to proceed. If you use CNPs-MFSA in your research, please cite: Mi Zhang et al.** Automated annotation of complex natural products using a modular fragmentation–based structure assembly (MFSA) strategy. Science Advances, 11, eadw4693 (2025). https://doi.org/10.1126/sciadv.adw4693',
-            style={'textAlign': 'justify', 'margin': '20px', 'marginBottom': '20px', 'fontFamily': 'Arial', 'fontSize':
-                '20px'}),
+            'fragmentation-based structural assembly (MFSA) strategy. This tool provides functionalities to recognize target natural products, calculate molecular compositions, determine possible adduct ions, identify characteristic neutral losses, extract feature ions, calculate cosine similarity scores between standard and query spectra, and provide possible structure annotation. Please select the relevant tab to proceed.',
+            html.Br(), 
+            html.Span(
+                "📖 If you use CNPs-MFSA in your research, please cite: "
+                "Mi Zhang et al. Automated annotation of complex natural products using a modular fragmentation–based structure assembly (MFSA) strategy. "
+                "Science Advances, 11, eadw4693 (2025). https://doi.org/10.1126/sciadv.adw4693",
+                style={'fontSize': '12px'} 
+            )
+        ],
+        style={
+            'textAlign': 'justify',
+            'margin': '20px',
+            'marginBottom': '20px',
+            'fontFamily': 'Arial',
+            'fontSize': '20px'
+        }),
     ], style={
         'backgroundColor': '#f1f1f1',  # background color
         'padding': '5px'
@@ -5390,6 +5403,7 @@ if __name__ == '__main__':
 # =========================
 # if __name__ == '__main__':
     # app.run_server(debug=True)
+
 
 
 
