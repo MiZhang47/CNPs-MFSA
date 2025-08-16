@@ -18,15 +18,12 @@ For detailed instructions, please refer to the <ins>user manual</ins>.
 If you use **CNPs-MFSA** in your research, please cite:
 
 > **Mi Zhang et al.** Automated annotation of complex natural products using a modular fragmentation–based structure assembly (MFSA) strategy. *Science Advances, 11*, eadw4693 (2025). https://doi.org/10.1126/sciadv.adw4693
+>
+## 📬 Contact
 
-### BibTeX
-```bibtex
-@article{Zhang2025_MFSA,
-  title   = {Automated annotation of complex natural products using a modular fragmentation--based structure assembly (MFSA) strategy},
-  author  = {Zhang, Mi and others},
-  journal = {Science Advances},
-  volume  = {11},
-  pages   = {eadw4693},
-  year    = {2025},
-  doi     = {10.1126/sciadv.adw4693}
-}
+For any questions, issues related to the code or data, or user feedback, please contact:
+
+**Dr. Mi Zhang**  
+📧 zhangmi495@gmail.com  
+
+We are very happy to receive feedback and will carefully consider any suggestions. Thank you very much!
