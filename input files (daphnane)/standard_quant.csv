@@ -1,0 +1,10 @@
+row ID,row m/z,row retention time,peak area,standards name,substructure type
+1,591.258606,8.3951723,3.95E+09,genkwanine M,"6,7-epoxy"
+2,591.2588196,8.7453353,2.59E+08,genkwanine N,"6,7-epoxy"
+3,533.3108521,11.595447,8.44E+08,simplexin,"6,7-epoxy"
+4,609.2679443,8.3171075,5.39E+09,genkwanine H,"6,7-diol"
+5,609.2678833,8.0269279,1.30E+07,genkwanine G,"6,7-diol"
+6,573.2476807,4.1568114,2.67E+08,DPSft27,"4,6-epoxy"
+7,649.3005981,10.827824,1.59E+09,yuanhuacine,"6,7-epoxy"
+8,609.269043,3.8598187,7.17E+07,Wlichi7 (3.86),"4,7-epoxy"
+9,609.269043,6.2090547,8.10E+07,Wlichi7 (6.20),"4,7-epoxy"
